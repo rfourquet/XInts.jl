@@ -5,7 +5,7 @@ export XInt
 using Base.GMP: Limb, BITS_PER_LIMB, SLimbMax
 import Base.GMP.MPZ
 using Base.GC: @preserve
-import Base: +, *, ==, string, widen, hastypemax
+import Base: +, *, ==, string, widen, hastypemax, tryparse_internal, unsafe_trunc, trunc
 
 mutable struct Wrap
     b::BigInt
@@ -85,6 +85,15 @@ XInt(z::ShortW) =
 XInt(z::Integer) = XInt(BigInt(z)) # TODO: copy over the implementation from gmp.jl
 
 XInt(x::XInt) = x
+
+function XInt(x::Float64)
+    isinteger(x) || throw(InexactError(:XInt, XInt, x))
+    unsafe_trunc(XInt, x)
+end
+
+# no Union, to disambiguate
+XInt(x::Float16) = XInt(Float64(x))
+XInt(x::Float32) = XInt(Float64(x))
 
 function init!(z::Wrap, x::XInt)
     b = z.b
@@ -180,5 +189,17 @@ string(n::XInt; base::Integer = 10, pad::Integer = 1) =
 widen(::Type{XInt}) = XInt
 
 hastypemax(::Type{XInt}) = false
+
+tryparse_internal(::Type{XInt}, s::AbstractString, startpos::Int, endpos::Int,
+                  base_::Integer, raise::Bool) =
+                      XInt(tryparse_internal(BigInt, s, startpos, endpos, base_, raise))
+
+unsafe_trunc(::Type{XInt}, x::Union{Float32,Float64}) = XInt(unsafe_trunc(BigInt, x))
+
+function trunc(::Type{XInt}, x::Union{Float32,Float64})
+    isfinite(x) || throw(InexactError(:trunc, XInt, x))
+    unsafe_trunc(XInt, x)
+end
+
 
 end # module

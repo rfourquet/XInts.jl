@@ -34,6 +34,11 @@ using BitIntegers
             @test XInt(y) == BigInt(y)
         end
     end
+
+    @testset "XInt(::$T)" for T in [Float16, Float32, Float64]
+        @test XInt(T(2.0)) === XInt(2)
+        @test_throws InexactError XInt(T(2.2))
+    end
 end
 
 @testset "misc" begin
@@ -48,6 +53,18 @@ end
     @test !Base.hastypemax(XInt)
     if VERSION >= v"1.5"
         @test signed(XInt) == XInt
+    end
+    @test parse(XInt, "123") === XInt(123)
+end
+
+@testset "trunc" begin
+    for T in [#=Float16,=# Float32, Float64] # TODO: add Float16, and also for BigInt
+        @test trunc(XInt, T(2.2)) === XInt(2)
+        @test trunc(XInt, T(-2.2)) === XInt(-2)
+        @test_throws InexactError trunc(XInt, T(NaN))
+        @test_throws InexactError trunc(XInt, T(Inf))
+        @test unsafe_trunc(XInt, T(2.2)) === XInt(2)
+        @test unsafe_trunc(XInt, T(-2.2)) === XInt(-2)
     end
 end
 
