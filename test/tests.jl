@@ -3,6 +3,12 @@ using XInts: Short, shortmin, shortmax
 using BitIntegers
 
 @testset "constructor" begin
+    @testset "XInt(::XInt)" begin
+        x = XInt(2)
+        @test XInt(x) === x
+        x = XInt(big(2)^200)
+        @test XInt(x) === x
+    end
     @testset "XInt(::Bool)" begin
         @test XInt(false) == BigInt(false)
         @test XInt(true) == BigInt(true)
@@ -35,6 +41,13 @@ end
     for x = XInt[2, big(2)^70]
         @test copy(x) === x
         @test signed(x) === x
+        @test Signed(x) === x
+        @test widen(x) === x
+    end
+    @test widen(XInt) == XInt
+    @test !Base.hastypemax(XInt)
+    if VERSION >= v"1.5"
+        @test signed(XInt) == XInt
     end
 end
 

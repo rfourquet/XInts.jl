@@ -5,7 +5,7 @@ export XInt
 using Base.GMP: Limb, BITS_PER_LIMB, SLimbMax
 import Base.GMP.MPZ
 using Base.GC: @preserve
-import Base: +, *, ==, string
+import Base: +, *, ==, string, widen, hastypemax
 
 mutable struct Wrap
     b::BigInt
@@ -83,6 +83,8 @@ XInt(z::ShortW) =
     end
 
 XInt(z::Integer) = XInt(BigInt(z)) # TODO: copy over the implementation from gmp.jl
+
+XInt(x::XInt) = x
 
 function init!(z::Wrap, x::XInt)
     b = z.b
@@ -174,5 +176,9 @@ end
 
 string(n::XInt; base::Integer = 10, pad::Integer = 1) =
     @bigint () n string(n; base=base, pad=pad)
+
+widen(::Type{XInt}) = XInt
+
+hastypemax(::Type{XInt}) = false
 
 end # module
