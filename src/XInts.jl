@@ -5,7 +5,7 @@ export XInt
 using Base.GMP: Limb, BITS_PER_LIMB
 import Base.GMP.MPZ
 using Base.GC: @preserve
-import Base: (+), (*)
+import Base: (+), (*), (==)
 
 mutable struct Wrap
     b::BigInt
@@ -131,8 +131,14 @@ function Base.:(==)(x::XInt, y::XInt)
     end
 end
 
-Base.:(==)(x::XInt, y::BigInt) = @bigint () x x == y
-Base.:(==)(x::BigInt, y::XInt) = y == x
+==(x::XInt, y::Integer) =
+    if is_short(x)
+        x.x == y
+    else
+        @bigint () x x == y
+    end
+
+==(x::Integer, y::XInt) = y == x
 
 function +(x::XInt, y::XInt)
     if is_short(x, y)

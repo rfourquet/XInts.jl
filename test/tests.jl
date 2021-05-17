@@ -14,6 +14,12 @@ const shortmax = typemax(Short)
             @test (a == b) == (x == y)
             @test a == x && x == a
             @test b == y && y == b
+            for T in Base.BitInteger_types
+                if typemin(T) <= b <= typemax(T)
+                    z = T(b)
+                    @test (x == z) == (a == z) == (z == x)
+                end
+            end
         end
     end
 end
