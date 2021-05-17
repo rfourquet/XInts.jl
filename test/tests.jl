@@ -1,6 +1,21 @@
 using XInts
 using XInts: Short
 
+const shortmin = typemin(Short)
+const shortmax = typemax(Short)
+
+@testset "comparisons" begin
+    @testset "==" begin
+        xs = BigInt[shortmin, 0, 1, 2, shortmax-1, shortmax, shortmax+1, big(2)^100]
+        xs = [xs..., (-).(xs)...]
+        for (a, b) in Iterators.product(xs, xs)
+            x, y = XInt(a), XInt(b)
+            @test x == x
+            @test (a == b) == (x == y)
+        end
+    end
+end
+
 @testset "addition" begin
     for _=1:20
         a, b = rand(big.(-1000:1000), 2)

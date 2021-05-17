@@ -45,6 +45,7 @@ struct XInt
 end
 
 is_short(x::XInt) = x.v === nothing
+is_short(x::XInt, y::XInt) = x.v === nothing === y.v
 
 function XInt(z::BigInt)
     len = abs(z.size)
@@ -122,8 +123,16 @@ end
 
 Base.show(io::IO, x::XInt) = @bigint () x show(io, x)
 
+function Base.:(==)(x::XInt, y::XInt)
+    if is_short(x, y)
+        x.x == y.x
+    else
+        @bigint () x y x == y
+    end
+end
+
 function +(x::XInt, y::XInt)
-    if is_short(x) && is_short(y)
+    if is_short(x, y)
         z = widen(x.x) + widen(y.x)
         if typemin(Short) <= z <= typemax(Short)
             XInt(z % Short)
