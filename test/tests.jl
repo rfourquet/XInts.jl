@@ -63,6 +63,16 @@ end
     end
 end
 
+@testset "math" begin
+    @testset "isodd/iseven" begin
+        for x = Any[rand(Int8, 5)...,
+                    rand((-1, 1)) .* rand(0:big(2)^200, 5)...]
+            y = XInt(x)
+            @test iseven(y) == iseven(x) != isodd(y)
+        end
+    end
+end
+
 @testset "misc" begin
     # automatic implementation from XInt <: Signed
     for x = XInt[2, big(2)^70]

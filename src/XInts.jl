@@ -6,7 +6,7 @@ using Base.GMP: Limb, BITS_PER_LIMB, SLimbMax, ULimbMax
 import Base.GMP.MPZ
 using Base.GC: @preserve
 import Base: +, *, ==, string, widen, hastypemax, tryparse_internal, unsafe_trunc, trunc,
-             rem
+             rem, iseven, isodd
 
 mutable struct Wrap
     b::BigInt
@@ -222,5 +222,7 @@ end
 
 rem(x::Integer, ::Type{XInt}) = XInt(x)
 
+isodd(x::XInt) = is_short(x) ? isodd(x.x) : isodd(@inbounds x.v[1])
+iseven(x::XInt) = !isodd(x)
 
 end # module
