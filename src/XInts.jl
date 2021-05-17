@@ -5,7 +5,7 @@ export XInt
 using Base.GMP: Limb, BITS_PER_LIMB, SLimbMax
 import Base.GMP.MPZ
 using Base.GC: @preserve
-import Base: (+), (*), (==)
+import Base: +, *, ==, string
 
 mutable struct Wrap
     b::BigInt
@@ -41,7 +41,7 @@ end
 const shortmin = typemin(Short)
 const shortmax = typemax(Short)
 
-struct XInt
+struct XInt <: Signed
     x::Short # immediate integer or sign+length
     v::Union{Nothing,Vector{Limb}}
 
@@ -164,8 +164,15 @@ end
 
 ==(x::Integer, y::XInt) = y == x
 
+# disambiguation
+==(x::XInt, y::BigInt) = invoke(==, Tuple{XInt, Integer}, x, y)
+==(x::BigInt, y::XInt) = y == x
+
 +(x::XInt, y::XInt) =
     is_short(x, y) ? XInt(widen(x.x) + widen(y.x)) :
                      @bigint z x y XInt(MPZ.add!(z, x, y))
+
+string(n::XInt; base::Integer = 10, pad::Integer = 1) =
+    @bigint () n string(n; base=base, pad=pad)
 
 end # module

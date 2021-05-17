@@ -30,6 +30,14 @@ using BitIntegers
     end
 end
 
+@testset "misc" begin
+    # automatic implementation from XInt <: Signed
+    for x = XInt[2, big(2)^70]
+        @test copy(x) === x
+        @test signed(x) === x
+    end
+end
+
 @testset "comparisons" begin
     @testset "==" begin
         xs = BigInt[shortmin, 0, 1, 2, shortmax-1, shortmax, shortmax+1, big(2)^100]
