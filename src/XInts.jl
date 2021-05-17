@@ -131,6 +131,9 @@ function Base.:(==)(x::XInt, y::XInt)
     end
 end
 
+Base.:(==)(x::XInt, y::BigInt) = @bigint () x x == y
+Base.:(==)(x::BigInt, y::XInt) = y == x
+
 function +(x::XInt, y::XInt)
     if is_short(x, y)
         z = widen(x.x) + widen(y.x)

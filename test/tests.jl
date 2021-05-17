@@ -12,6 +12,8 @@ const shortmax = typemax(Short)
             x, y = XInt(a), XInt(b)
             @test x == x
             @test (a == b) == (x == y)
+            @test a == x && x == a
+            @test b == y && y == b
         end
     end
 end
