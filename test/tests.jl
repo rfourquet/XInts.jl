@@ -1,5 +1,5 @@
 using XInts
-using XInts: Short, shortmin, shortmax
+using XInts: Short, shortmin, shortmax, Limb
 using BitIntegers
 
 @testset "constructor" begin
@@ -38,6 +38,28 @@ using BitIntegers
     @testset "XInt(::$T)" for T in [Float16, Float32, Float64]
         @test XInt(T(2.0)) === XInt(2)
         @test_throws InexactError XInt(T(2.2))
+    end
+end
+
+@testset "conversions" begin
+    @testset "rem(::XInt, ::Type{Bool})" begin
+        for x = Any[rand(Limb), big(rand(Int128)), rand(-big(2)^200:big(2)^200)]
+            @test XInt(x) % Bool === x % Bool
+        end
+    end
+    @testset "rem(::XInt, ::Type{$T})" for T in Base.BitInteger_types
+        xs = T[0, 2, rand(T, 10)..., typemax(T)]
+        if T <: Signed
+            push!(xs, -1, -2, typemin(T))
+        end
+        for x = xs
+            @test XInt(x) % T === x
+            @test XInt(big(rand(T)) << (8*sizeof(T)) +
+                       big(x)) % T === x
+            @test XInt(big(rand(T)) << (16*sizeof(T)) +
+                       big(rand(T)) << (8*sizeof(T)) +
+                       big(x)) % T === x
+        end
     end
 end
 

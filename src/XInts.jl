@@ -2,10 +2,11 @@ module XInts
 
 export XInt
 
-using Base.GMP: Limb, BITS_PER_LIMB, SLimbMax
+using Base.GMP: Limb, BITS_PER_LIMB, SLimbMax, ULimbMax
 import Base.GMP.MPZ
 using Base.GC: @preserve
-import Base: +, *, ==, string, widen, hastypemax, tryparse_internal, unsafe_trunc, trunc
+import Base: +, *, ==, string, widen, hastypemax, tryparse_internal, unsafe_trunc, trunc,
+             rem
 
 mutable struct Wrap
     b::BigInt
@@ -200,6 +201,26 @@ function trunc(::Type{XInt}, x::Union{Float32,Float64})
     isfinite(x) || throw(InexactError(:trunc, XInt, x))
     unsafe_trunc(XInt, x)
 end
+
+
+rem(x::XInt, ::Type{Bool}) =
+    is_short(x) ? x.x % Bool :
+                  (@inbounds x.v[1]) % Bool
+
+rem(x::XInt, ::Type{T}) where T<:Union{SLimbMax,ULimbMax} =
+    is_short(x) ? x.x % T : flipsign((@inbounds x.v[1] % T), x.x)
+
+# TODO: extend to "AbstractBitInteger", when available in Base
+function rem(x::XInt, ::Type{T}) where T<:Union{Base.BitUnsigned,Base.BitSigned}
+    is_short(x) && return x.x % T
+    u = zero(T)
+    for l = 1:min(abs(x.x), cld(sizeof(T), sizeof(Limb)))
+        u += (@inbounds x.v[l] % T) << ((sizeof(Limb)<<3)*(l-1))
+    end
+    flipsign(u, x.x)
+end
+
+rem(x::Integer, ::Type{XInt}) = XInt(x)
 
 
 end # module
