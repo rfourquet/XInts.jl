@@ -2,7 +2,7 @@ module XInts
 
 export XInt
 
-using Base.GMP: Limb, BITS_PER_LIMB
+using Base.GMP: Limb, BITS_PER_LIMB, SLimbMax
 import Base.GMP.MPZ
 using Base.GC: @preserve
 import Base: (+), (*), (==)
@@ -30,11 +30,16 @@ end
 
 if BITS_PER_LIMB == 32
     const Short = Int32
+    const ShortW = Int64
 elseif BITS_PER_LIMB == 64
     const Short = Int64
+    const ShortW = Int128
 else
     error()
 end
+
+const shortmin = typemin(Short)
+const shortmax = typemax(Short)
 
 struct XInt
     x::Short # immediate integer or sign+length
@@ -51,7 +56,7 @@ function XInt(z::BigInt)
     len = abs(z.size)
     if len == 0
         XInt(zero(Short))
-    elseif len == 1 && (x = unsafe_load(z.d)) <= typemax(Short)
+    elseif len == 1 && (x = unsafe_load(z.d)) <= shortmax
         XInt(flipsign(x % Short, z.size))
     else
         x = XInt(z.size % Short, Vector{Limb}(undef, len))
@@ -59,6 +64,25 @@ function XInt(z::BigInt)
         x
     end
 end
+
+XInt(z::SLimbMax) = XInt(z % Short)
+
+XInt(z::Limb) = z <= shortmax ? XInt(z % Short) :
+                                XInt(one(Short), Limb[z])
+
+XInt(z::ShortW) =
+    if shortmin <= z <= shortmax
+        XInt(z % Short)
+    else
+        zz = abs(z)
+        z1 = zz % Limb
+        z2 = (zz >>> BITS_PER_LIMB) % Limb
+        iszero(z2) ?
+            XInt(sign(z) % Short, [z1]) :
+            XInt(flipsign(Short(2), z), [z1, z2])
+    end
+
+XInt(z::Integer) = XInt(BigInt(z)) # TODO: copy over the implementation from gmp.jl
 
 function init!(z::Wrap, x::XInt)
     b = z.b
@@ -140,23 +164,8 @@ end
 
 ==(x::Integer, y::XInt) = y == x
 
-function +(x::XInt, y::XInt)
-    if is_short(x, y)
-        z = widen(x.x) + widen(y.x)
-        if typemin(Short) <= z <= typemax(Short)
-            XInt(z % Short)
-        else
-            zz = abs(z)
-            z1 = zz % Limb
-            z2 = (zz >>> BITS_PER_LIMB) % Limb
-            iszero(z2) ?
-                XInt(sign(z) % Short, [z1]) :
-                XInt(flipsign(Short(2), z), [z1, z2])
-        end
-    else
-        @bigint z x y XInt(MPZ.add!(z, x, y))
-    end
-end
-
++(x::XInt, y::XInt) =
+    is_short(x, y) ? XInt(widen(x.x) + widen(y.x)) :
+                     @bigint z x y XInt(MPZ.add!(z, x, y))
 
 end # module
