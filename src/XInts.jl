@@ -2,13 +2,13 @@ module XInts
 
 export XInt
 
-using Base.GMP: Limb, BITS_PER_LIMB, SLimbMax, ULimbMax, ClongMax, CulongMax
+using Base.GMP: Limb, BITS_PER_LIMB, SLimbMax, ULimbMax, ClongMax, CulongMax, CdoubleMax
 import Base.GMP.MPZ
 using Base.GC: @preserve
 import Base: +, -, *, &, |, ==, /, ~, <<, >>, >>>,
              string, widen, hastypemax, tryparse_internal,
              unsafe_trunc, trunc, mod, rem, iseven, isodd, gcd, lcm, xor, div, fld, cld,
-             invmod, count_ones, trailing_zeros, trailing_ones
+             invmod, count_ones, trailing_zeros, trailing_ones, cmp
 
 mutable struct Wrap
     b::BigInt
@@ -353,5 +353,11 @@ count_ones(x::XInt) =
         @bigint () x MPZ.popcount(x)
     end
 
+
+cmp(x::XInt, y::XInt) = is_short(x, y) ? cmp(x.x, y.x) : @bigint () x y cmp(x, y)
+cmp(x::XInt, y::Integer) = is_short(x) ? cmp(x.x, y) : @bigint () x cmp(x, y)
+cmp(y::Integer, x::XInt) = -cmp(x, y)
+cmp(x::XInt, y::CdoubleMax) = is_short(x) ? cmp(x.x, y) : @bigint () x cmp(x, y)
+cmp(y::CdoubleMax, x::XInt) = -cmp(x, y)
 
 end # module

@@ -1,5 +1,5 @@
 using XInts
-using XInts: Short, shortmin, shortmax, Limb, ClongMax, CulongMax
+using XInts: Short, shortmin, shortmax, Limb, ClongMax, CulongMax, CdoubleMax
 using BitIntegers
 
 @testset "constructor" begin
@@ -168,6 +168,8 @@ end
                 @test r isa BigFloat
             elseif op === divrem
                 @test r isa Tuple{XInt,XInt}
+            elseif op === cmp
+                @test r ∈ (-1, 0, 1)
             else
                 @test r isa XInt
             end
@@ -180,7 +182,7 @@ end
         end
     end
     @testset "$op(::XInt, ::XInt)" for op = (+, -, *, mod, rem, gcd, lcm, &, |, xor,
-                                             /, div, divrem, fld, cld, invmod)
+                                             /, div, divrem, fld, cld, invmod, cmp)
         for _=1:20
             a, b = rand(big.(0:1000), 2)
             test(op, a, b)
@@ -192,17 +194,22 @@ end
             test(op, a, b)
         end
     end
-    @testset "$op(::XInt, ::$T) / $op(::$T, ::XInt)" for op = (+, -, *, /),
-                                                         T = [Base.uniontypes(CulongMax);
-                                                              Base.uniontypes(ClongMax)]
-        as = T[0, 1, 2, 3, rand(T, 10)..., typemax(T), typemax(T)-1, typemax(T)-2]
-        xs = BigInt.(as)
+    @testset "$op(::XInt, ::$T) / $op(::$T, ::XInt)" for
+        op = (+, -, *, /, cmp),
+        T = [Base.uniontypes(CulongMax); Base.uniontypes(ClongMax);
+             op === cmp ? Base.uniontypes(CdoubleMax) : []]
+
+        S = T === BigInt ? Int128 : T
+        as = T[0, 1, 2, 3, rand(S, 10)..., typemax(S), typemax(S)-1, typemax(S)-2]
+        xs = BigInt.(filter(isinteger, as))
         if T <: Signed
             append!(as, (-).(as))
-            push!(as, typemin(T))
+            push!(as, typemin(S))
         end
-        push!(xs, typemin(T))
-        append!(xs, rand(T, 10))
+        if T <: Integer
+            push!(xs, typemin(S))
+            append!(xs, rand(S, 10))
+        end
         append!(xs, rand(big(2)^65:big(2)^100, 5))
         append!(xs, rand(big(0):big(2)^200, 5))
         for a = as, y = xs, z = (-y, y), x = (XInt(z),)
@@ -213,6 +220,8 @@ end
                 s = op(a, z)
                 if op === /
                     @test r isa BigFloat
+                elseif op === cmp
+                    @test r ∈ (-1, 0, 1)
                 else
                     @test r isa XInt
                 end
