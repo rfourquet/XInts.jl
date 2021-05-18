@@ -8,7 +8,8 @@ using Base.GC: @preserve
 import Base: +, -, *, ^, &, |, ==, /, ~, <<, >>, >>>, <, <=,
              string, widen, hastypemax, tryparse_internal,
              unsafe_trunc, trunc, mod, rem, iseven, isodd, gcd, lcm, xor, div, fld, cld,
-             invmod, count_ones, trailing_zeros, trailing_ones, cmp, isqrt, flipsign
+             invmod, count_ones, trailing_zeros, trailing_ones, cmp, isqrt,
+             flipsign, powermod, gcdx, promote_rule
 
 mutable struct Wrap
     b::BigInt
@@ -188,6 +189,10 @@ string(n::XInt; base::Integer = 10, pad::Integer = 1) =
 widen(::Type{XInt}) = XInt
 
 hastypemax(::Type{XInt}) = false
+
+promote_rule(::Type{XInt}, ::Type{<:Integer}) = XInt
+promote_rule(::Type{XInt}, ::Type{BigInt}) = XInt
+promote_rule(::Type{BigInt}, ::Type{XInt}) = XInt
 
 tryparse_internal(::Type{XInt}, s::AbstractString, startpos::Int, endpos::Int,
                   base_::Integer, raise::Bool) =
@@ -405,6 +410,29 @@ end
 ^(x::XInt   , y::Integer) = xint_pow(x, y)
 ^(x::Integer, y::XInt   ) = xint_pow(XInt(x), y)
 ^(x::Bool   , y::XInt   ) = Base.power_by_squaring(x, y)
+
+powermod(x::XInt, p::XInt, m::XInt) =
+    is_short(x, p) && is_short(m) ? XInt(powermod(x.x, p.x, m.x)) :
+                                    @bigint () x p m XInt(powermod(x, p, m))
+
+powermod(x::Integer, p::Integer, m::XInt) = powermod(XInt(x), XInt(p), m)
+
+function gcdx(a::XInt, b::XInt)
+    is_short(a, b) && return XInt.(gcdx(a.x, b.x))
+    if iszero(b) # shortcut this to ensure consistent results with gcdx(a,b)
+        return a < 0 ? (-a,-one(XInt),b) : (a,one(XInt),b)
+    end
+    g, s, t = XInt.(@bigint (x, y, z) a b MPZ.gcdext!(x, y, z, a, b))
+    if t == 0
+        # work around a difference in some versions of GMP
+        if a == b
+            return g, t, s
+        elseif abs(a)==abs(b)
+            return g, t, -s
+        end
+    end
+    g, s, t
+end
 
 
 flipsign(x::XInt, y::Integer) = signbit(y) ? -x : x

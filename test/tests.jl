@@ -161,6 +161,8 @@ end
             r = op(XInt(a), XInt(b))
             if op === divrem
                 @test r isa Tuple{XInt,XInt}
+            elseif op === gcdx
+                @test r isa Tuple{XInt,XInt,XInt}
             elseif !(s isa BigInt)
                 @test typeof(s) == typeof(r)
             else
@@ -174,7 +176,7 @@ end
             end
         end
     end
-    @testset "$op(::XInt, ::XInt)" for op = (+, -, *, mod, rem, gcd, lcm, &, |, xor,
+    @testset "$op(::XInt, ::XInt)" for op = (+, -, *, mod, rem, gcd, gcdx, lcm, &, |, xor,
                                              /, div, divrem, fld, cld, invmod,
                                              cmp, <, <=, >, >=, ==, flipsign)
         for _=1:20
@@ -188,13 +190,10 @@ end
             test(op, a, b)
         end
     end
-    @testset "$op(::XInt, ::$T) / $op(::$T, ::XInt)" for
-        op = (+, -, *, /, cmp, <, <=, >, >=, ==, flipsign),
-        T = [Base.uniontypes(CulongMax); Base.uniontypes(ClongMax);
-             op ∈ (cmp, ) ? Base.uniontypes(CdoubleMax) : []]
 
+    function make_values(T, n=5)
         S = T === BigInt ? Int128 : T
-        as = T[0, 1, 2, 3, rand(S, 10)..., typemax(S), typemax(S)-1, typemax(S)-2]
+        as = T[0, 1, 2, 3, rand(S, 2n)..., typemax(S), typemax(S)-1, typemax(S)-2]
         xs = BigInt.(filter(isinteger, as))
         if T <: Signed
             append!(as, (-).(as))
@@ -202,23 +201,54 @@ end
         end
         if T <: Integer
             push!(xs, typemin(S))
-            append!(xs, rand(S, 10))
+            append!(xs, rand(S, 2n))
         end
-        append!(xs, rand(big(2)^65:big(2)^100, 5))
-        append!(xs, rand(big(0):big(2)^200, 5))
+        append!(xs, rand(big(2)^65:big(2)^100, n))
+        append!(xs, rand(big(0):big(2)^200, n))
+        as, xs
+    end
+
+    @testset "$op(::XInt, ::$T) / $op(::$T, ::XInt)" for
+        op in (+, -, *, /, cmp, <, <=, >, >=, ==, flipsign, gcd, gcdx),
+        T in [Base.uniontypes(CulongMax); Base.uniontypes(ClongMax);
+             op ∈ (cmp, ) ? Base.uniontypes(CdoubleMax) : []]
+
+        as, xs = make_values(T)
         for a = as, y = xs, z = (-y, y), x = (XInt(z),)
             for (r, s) = Any[(op(a, x), op(a, z)),
                              (op(x, a), op(z, a))]
 
-                r = op(a, x)
-                s = op(a, z)
                 if s isa BigInt
                     @test r isa XInt
+                elseif op === gcdx
+                    @test r isa Tuple{XInt,XInt,XInt}
                 else
                     @test typeof(r) == typeof(s)
                 end
                 @test isequal(r, s) # not `==` for NaN
             end
+        end
+    end
+
+    @testset "powermod(::$T/XInt, ::$T/XInt, ::XInt)" for
+            T in [Base.uniontypes(CulongMax); Base.uniontypes(ClongMax); [BigInt]]
+        # TODO: add more combinations for first two parameters
+        as1, xs1 = make_values(T, 2)
+        as2, xs2 = make_values(T, 2)
+        for a=as1, b=filter(>=(0), as2), x=filter(!iszero, xs1)
+            s = powermod(a, b, x)
+            r = powermod(a, b, XInt(x))
+            @test s == r
+            @test r isa XInt
+        end
+        for a=as1, x=filter(>=(0), xs1), y=filter(!iszero, xs2)
+            s = powermod(a, x, y)
+            r = powermod(a, XInt(x), XInt(y))
+            @test s == r
+            @test r isa XInt
+            r = powermod(XInt(a), XInt(x), XInt(y))
+            @test s == r
+            @test r isa XInt
         end
     end
 end
