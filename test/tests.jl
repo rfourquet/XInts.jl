@@ -166,6 +166,8 @@ end
             r = op(XInt(a), XInt(b))
             if op === /
                 @test r isa BigFloat
+            elseif op === divrem
+                @test r isa Tuple{XInt,XInt}
             else
                 @test r isa XInt
             end
@@ -177,8 +179,8 @@ end
             end
         end
     end
-    @testset "$op(::XInt, ::XInt)" for op = (+, -, *, mod, rem, div, gcd, lcm, &, |, xor,
-                                             /, div, fld, cld, invmod)
+    @testset "$op(::XInt, ::XInt)" for op = (+, -, *, mod, rem, gcd, lcm, &, |, xor,
+                                             /, div, divrem, fld, cld, invmod)
         for _=1:20
             a, b = rand(big.(0:1000), 2)
             test(op, a, b)

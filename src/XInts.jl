@@ -280,6 +280,9 @@ div(x::XInt, y::XInt) = div(x, y, RoundToZero)
 fld(x::XInt, y::XInt) = div(x, y, RoundDown)
 cld(x::XInt, y::XInt) = div(x, y, RoundUp)
 
+divrem(x::XInt, y::XInt) = is_short(x, y) ? XInt.(divrem(x.x, y.x)) :
+                                            @bigint () x y XInt.(MPZ.tdiv_qr(x, y))
+
 # TODO: remove @bigint when float(::XInt) is implemented
 /(x::XInt, y::XInt) = @bigint () x y float(x)/float(y)
 
