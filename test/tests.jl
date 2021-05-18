@@ -151,18 +151,13 @@ end
             s = if op === invmod
                     try
                         op(a, b)
-                    catch DomainError
-                        nothing
+                    catch
+                        @test_throws DomainError op(XInt(a), XInt(b))
+                        continue
                     end
                 else
                     op(a, b)
                 end
-            if s === nothing # can't be put in the catch branch above, it fails
-                             # when is_short branch is taken
-                             # TODO: can this be fixed ? (error message is confusing...)
-                @test_throws DomainError op(XInt(a), XInt(b))
-                continue
-            end
             r = op(XInt(a), XInt(b))
             if op === /
                 @test r isa BigFloat
@@ -231,7 +226,7 @@ end
     end
 end
 
-@testset "bitops and unary (-)" begin
+@testset "bit and unary ops, etc." begin
     xs = BigInt[0, 1, 2, 3, rand(UInt8, 5)..., rand(UInt, 5)..., rand(Short, 5)...,
                 typemax(UInt), typemax(UInt)-1, typemax(UInt)-2,
                 typemax(Short), typemax(Short)-1, typemax(Short)-2]
@@ -240,15 +235,12 @@ end
     append!(xs, (-).(xs))
     push!(xs, typemin(Short), typemin(Short)+1, big(typemin(Short))-1)
 
-    @testset "$op(::XInt)" for op = (-, ~, trailing_zeros, trailing_ones, count_ones)
+    @testset "$op(::XInt)" for op = (-, ~, isqrt, trailing_zeros, trailing_ones, count_ones)
         for x = xs
             s = try
                 op(x)
-            catch InexactError
-                nothing
-            end
-            if s === nothing
-                @test_throws Union{InexactError,DomainError} op(XInt(x))
+            catch
+                @test_throws Union{InexactError,DomainError,DivideError} op(XInt(x))
                 continue
             end
             r = op(XInt(x))
@@ -263,12 +255,14 @@ end
     end
     cs = [0, 1, 2, 3, 4, rand(5:typemax(Int8), 20)...]
     cs2 = [cs; (-).(cs)]
-    @testset "$op(::XInt, c)" for op = (<<, >>, >>>)
-        for x = xs, T = [Base.BitInteger_types..., BigInt], c = (T <: Signed ? cs2 : cs)
-            s = op(x, T(c))
-            r = op(XInt(x), T(c))
-            @test s == r
-            @test r isa XInt
+    @testset "$op(::XInt, c)" for op = (<<, >>, >>>, (^))
+        for x = xs, T = [Base.BitInteger_types..., BigInt, Bool] # TODO: add XInt
+            for c = (T <: Signed && op !== (^) ? cs2 : T === Bool ? [true, false] : cs)
+                s = op(x, T(c))
+                r = op(XInt(x), T(c))
+                @test s == r
+                @test r isa XInt
+            end
         end
     end
 end

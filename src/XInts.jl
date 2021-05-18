@@ -5,10 +5,10 @@ export XInt
 using Base.GMP: Limb, BITS_PER_LIMB, SLimbMax, ULimbMax, ClongMax, CulongMax, CdoubleMax
 import Base.GMP.MPZ
 using Base.GC: @preserve
-import Base: +, -, *, &, |, ==, /, ~, <<, >>, >>>,
+import Base: +, -, *, ^, &, |, ==, /, ~, <<, >>, >>>,
              string, widen, hastypemax, tryparse_internal,
              unsafe_trunc, trunc, mod, rem, iseven, isodd, gcd, lcm, xor, div, fld, cld,
-             invmod, count_ones, trailing_zeros, trailing_ones, cmp
+             invmod, count_ones, trailing_zeros, trailing_ones, cmp, isqrt
 
 mutable struct Wrap
     b::BigInt
@@ -359,5 +359,40 @@ cmp(x::XInt, y::Integer) = is_short(x) ? cmp(x.x, y) : @bigint () x cmp(x, y)
 cmp(y::Integer, x::XInt) = -cmp(x, y)
 cmp(x::XInt, y::CdoubleMax) = is_short(x) ? cmp(x.x, y) : @bigint () x cmp(x, y)
 cmp(y::CdoubleMax, x::XInt) = -cmp(x, y)
+
+
+isqrt(x::XInt) = is_short(x) ? XInt(isqrt(x.x)) : @bigint z x XInt(MPZ.sqrt!(z, x))
+
+^(x::XInt, y::Culong) = @bigint z x XInt(MPZ.pow_ui!(z, x, y))
+
+function xint_pow(x::XInt, y::Integer)
+    if y<0; throw(DomainError(y, "`y` cannot be negative.")); end
+    @noinline throw1(y) =
+        throw(OverflowError("exponent $y is too large and computation will overflow"))
+    if x== 1; return x; end
+    if x==-1; return isodd(y) ? x : -x; end
+    if y>typemax(Culong)
+       x==0 && return x
+
+       #At this point, x is not 1, 0 or -1 and it is not possible to use
+       #gmpz_pow_ui to compute the answer. Note that the magnitude of the
+       #answer is:
+       #- at least 2^(2^32-1) ≈ 10^(1.3e9) (if Culong === UInt32).
+       #- at least 2^(2^64-1) ≈ 10^(5.5e18) (if Culong === UInt64).
+       #
+       #Assume that the answer will definitely overflow.
+
+       throw1(y)
+    end
+    return x^convert(Culong, y)
+end
+
+^(x::XInt   , y::XInt   ) = xint_pow(x, y)
+^(x::XInt   , y::BigInt ) = xint_pow(x, y)
+^(x::BigInt , y::XInt   ) = @bigint () y Base.GMP.bigint_pow(x, y)
+^(x::XInt   , y::Bool   ) = y ? x : one(x)
+^(x::XInt   , y::Integer) = xint_pow(x, y)
+^(x::Integer, y::XInt   ) = xint_pow(XInt(x), y)
+^(x::Bool   , y::XInt   ) = Base.power_by_squaring(x, y)
 
 end # module
