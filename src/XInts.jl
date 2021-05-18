@@ -418,7 +418,9 @@ powermod(x::XInt, p::XInt, m::XInt) =
 powermod(x::Integer, p::Integer, m::XInt) = powermod(XInt(x), XInt(p), m)
 
 function gcdx(a::XInt, b::XInt)
-    is_short(a, b) && return XInt.(gcdx(a.x, b.x))
+    is_short(a, b) &&
+        return XInt.(gcdx(widen(a.x), widen(b.x)))
+        # widen above necessary at least for (a, b) == (typemin(Int), 0)
     if iszero(b) # shortcut this to ensure consistent results with gcdx(a,b)
         return a < 0 ? (-a,-one(XInt),b) : (a,one(XInt),b)
     end

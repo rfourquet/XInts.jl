@@ -147,16 +147,16 @@ end
 
 @testset "operations" begin
     function test(op, x, y)
-        for x = (-x, x), y = (-y, y), a = (x, y), b = (x, y)
+        for a = (-x, x), b = (-y, y)
             s = if op === invmod
                     try
-                        op(a, b)
+                        op(big(a), big(b))
                     catch
                         @test_throws DomainError op(XInt(a), XInt(b))
                         continue
                     end
                 else
-                    op(a, b)
+                    op(big(a), big(b))
                 end
             r = op(XInt(a), XInt(b))
             if op === divrem
@@ -171,7 +171,7 @@ end
             @test s == r
             if op === div
                 for R = (RoundToZero, RoundDown, RoundUp)
-                    @test div(a, b, R) == div(XInt(a), XInt(b), R) isa XInt
+                    @test div(big(a), big(b), R) == div(XInt(a), XInt(b), R) isa XInt
                 end
             end
         end
@@ -179,15 +179,13 @@ end
     @testset "$op(::XInt, ::XInt)" for op = (+, -, *, mod, rem, gcd, gcdx, lcm, &, |, xor,
                                              /, div, divrem, fld, cld, invmod,
                                              cmp, <, <=, >, >=, ==, flipsign)
-        for _=1:20
-            a, b = rand(big.(0:1000), 2)
-            test(op, a, b)
-        end
-        for (a, b) = [(big(typemax(Short)-1), big(1)), # no overflow
-                      (big(typemax(Short)-1), big(2)), # overflow
-                      rand(big(2)^65:big(2)^100, 2), # two bigs
-                      rand(big(0):big(2)^100, 2)] # anything
-            test(op, a, b)
+        xs = Any[0, 1, 2, rand(0:1000, 10)..., shortmax, shortmax-1, shortmax-2,
+                    rand(Int128(2)^65:Int128(2)^100, 2)..., rand(big(0):big(2)^200, 2)...,
+                    shortmin] # TODO: shortmin and 0 are used twice when negated in test(...)
+        for x=xs, y=xs
+            iszero(y) && op ∈ (/, mod, rem, div, divrem, fld, cld, invmod) &&
+                continue
+            test(op, x, y)
         end
     end
 
