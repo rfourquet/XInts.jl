@@ -6,7 +6,8 @@ using Base.GMP: Limb, BITS_PER_LIMB, SLimbMax, ULimbMax
 import Base.GMP.MPZ
 using Base.GC: @preserve
 import Base: +, -, *, &, |, ==, /, string, widen, hastypemax, tryparse_internal,
-             unsafe_trunc, trunc, mod, rem, iseven, isodd, gcd, lcm, xor, div, fld, cld
+             unsafe_trunc, trunc, mod, rem, iseven, isodd, gcd, lcm, xor, div, fld, cld,
+             invmod
 
 mutable struct Wrap
     b::BigInt
@@ -263,6 +264,8 @@ for (fJ, fC) in ((:+, :add), (:-,:sub), (:*, :mul),
     end
 end
 
+# TODO: 3+ args specializations for some ops, like in gmp.jl
+
 for (r, f) in ((RoundToZero, :tdiv_q),
                (RoundDown, :fdiv_q),
                (RoundUp, :cdiv_q))
@@ -278,6 +281,10 @@ cld(x::XInt, y::XInt) = div(x, y, RoundUp)
 
 # TODO: remove @bigint when float(::XInt) is implemented
 /(x::XInt, y::XInt) = @bigint () x y float(x)/float(y)
+
+invmod(x::XInt, y::XInt) =
+    is_short(x, y) ? XInt(invmod(widen(x.x), widen(y.x))) :
+                     @bigint () x y XInt(invmod(x, y))
 
 
 end # module

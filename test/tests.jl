@@ -148,13 +148,28 @@ end
 @testset "operations" begin
     function test(op, x, y)
         for x = (-x, x), y = (-y, y), a = (x, y), b = (x, y)
+            s = if op === invmod
+                    try
+                        op(a, b)
+                    catch DomainError
+                        nothing
+                    end
+                else
+                    op(a, b)
+                end
+            if s === nothing # can't be put in the catch branch above, it fails
+                             # when is_short branch is taken
+                             # TODO: can this be fixed ? (error message is confusing...)
+                @test_throws DomainError op(XInt(a), XInt(b))
+                continue
+            end
             r = op(XInt(a), XInt(b))
             if op === /
                 @test r isa BigFloat
             else
                 @test r isa XInt
             end
-            @test op(a, b) == r
+            @test s == r
             if op === div
                 for R = (RoundToZero, RoundDown, RoundUp)
                     @test div(a, b, R) == div(XInt(a), XInt(b), R) isa XInt
@@ -163,7 +178,7 @@ end
         end
     end
     @testset "$op(::XInt, ::XInt)" for op = (+, -, *, mod, rem, div, gcd, lcm, &, |, xor,
-                                             /, div, fld, cld)
+                                             /, div, fld, cld, invmod)
         for _=1:20
             a, b = rand(big.(0:1000), 2)
             test(op, a, b)
