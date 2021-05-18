@@ -1,5 +1,5 @@
 using XInts
-using XInts: Short, shortmin, shortmax, Limb
+using XInts: Short, shortmin, shortmax, Limb, ClongMax, CulongMax
 using BitIntegers
 
 @testset "constructor" begin
@@ -188,6 +188,34 @@ end
                       rand(big(2)^65:big(2)^100, 2), # two bigs
                       rand(big(0):big(2)^100, 2)] # anything
             test(op, a, b)
+        end
+    end
+    @testset "$op(::XInt, ::$T) / $op(::$T, ::XInt)" for op = (+, -, *, /),
+                                                         T = [Base.uniontypes(CulongMax);
+                                                              Base.uniontypes(ClongMax)]
+        as = T[0, 1, 2, 3, rand(T, 10)..., typemax(T), typemax(T)-1, typemax(T)-2]
+        xs = BigInt.(as)
+        if T <: Signed
+            append!(as, (-).(as))
+            push!(as, typemin(T))
+        end
+        push!(xs, typemin(T))
+        append!(xs, rand(T, 10))
+        append!(xs, rand(big(2)^65:big(2)^100, 5))
+        append!(xs, rand(big(0):big(2)^200, 5))
+        for a = as, y = xs, z = (-y, y), x = (XInt(z),)
+            for (r, s) = Any[(op(a, x), op(a, z)),
+                             (op(x, a), op(z, a))]
+
+                r = op(a, x)
+                s = op(a, z)
+                if op === /
+                    @test r isa BigFloat
+                else
+                    @test r isa XInt
+                end
+                @test isequal(r, s) # not `==` for NaN
+            end
         end
     end
 end

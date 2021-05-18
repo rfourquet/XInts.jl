@@ -2,7 +2,7 @@ module XInts
 
 export XInt
 
-using Base.GMP: Limb, BITS_PER_LIMB, SLimbMax, ULimbMax
+using Base.GMP: Limb, BITS_PER_LIMB, SLimbMax, ULimbMax, ClongMax, CulongMax
 import Base.GMP.MPZ
 using Base.GC: @preserve
 import Base: +, -, *, &, |, ==, /, string, widen, hastypemax, tryparse_internal,
@@ -285,6 +285,39 @@ cld(x::XInt, y::XInt) = div(x, y, RoundUp)
 invmod(x::XInt, y::XInt) =
     is_short(x, y) ? XInt(invmod(widen(x.x), widen(y.x))) :
                      @bigint () x y XInt(invmod(x, y))
+
+# Basic arithmetic without promotion
++(x::XInt, c::CulongMax) = is_short(x) ? XInt(widen(x.x) + c) :
+                                         @bigint () x XInt(MPZ.add_ui(x, c))
++(c::CulongMax, x::XInt) = x + c
+
+-(x::XInt, c::CulongMax) = is_short(x) ? XInt(widen(x.x) - c) :
+                                         @bigint () x XInt(MPZ.sub_ui(x, c))
+
+-(c::CulongMax, x::XInt) = is_short(x) ? XInt(c - widen(x.x)) :
+                                         @bigint () x XInt(MPZ.ui_sub(c, x))
+
++(x::XInt, c::ClongMax) = c < 0 ? -(x, -(c % Culong)) : x + convert(Culong, c)
++(c::ClongMax, x::XInt) = c < 0 ? -(x, -(c % Culong)) : x + convert(Culong, c)
+-(x::XInt, c::ClongMax) = c < 0 ? +(x, -(c % Culong)) : -(x, convert(Culong, c))
+-(c::ClongMax, x::XInt) = c < 0 ? -(x + -(c % Culong)) : -(convert(Culong, c), x)
+
+*(x::XInt, c::CulongMax) = is_short(x) ? XInt(widen(x.x) * c) :
+                                         @bigint () x XInt(MPZ.mul_ui(x, c))
+
+*(c::CulongMax, x::XInt) = x * c
+
+*(x::XInt, c::ClongMax) = is_short(x) ? XInt(widen(x.x) * c) :
+                                        @bigint () x XInt(MPZ.mul_si(x, c))
+
+*(c::ClongMax, x::XInt) = x * c
+
+# TODO: remove @bigint when float(::XInt) is implemented
+/(x::XInt, y::Union{ClongMax,CulongMax}) = @bigint () x float(x)/y
+/(x::Union{ClongMax,CulongMax}, y::XInt) = @bigint () y x/float(y)
+
+# unary ops
+(-)(x::XInt) = is_short(x) ? XInt(-widen(x.x)) : @bigint () x XInt(MPZ.neg(x))
 
 
 end # module
