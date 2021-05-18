@@ -5,8 +5,8 @@ export XInt
 using Base.GMP: Limb, BITS_PER_LIMB, SLimbMax, ULimbMax
 import Base.GMP.MPZ
 using Base.GC: @preserve
-import Base: +, *, ==, string, widen, hastypemax, tryparse_internal, unsafe_trunc, trunc,
-             rem, iseven, isodd
+import Base: +, -, *, &, |, ==, /, string, widen, hastypemax, tryparse_internal,
+             unsafe_trunc, trunc, mod, rem, iseven, isodd, gcd, lcm, xor, div, fld, cld
 
 mutable struct Wrap
     b::BigInt
@@ -180,10 +180,6 @@ end
 ==(x::XInt, y::BigInt) = invoke(==, Tuple{XInt, Integer}, x, y)
 ==(x::BigInt, y::XInt) = y == x
 
-+(x::XInt, y::XInt) =
-    is_short(x, y) ? XInt(widen(x.x) + widen(y.x)) :
-                     @bigint z x y XInt(MPZ.add!(z, x, y))
-
 string(n::XInt; base::Integer = 10, pad::Integer = 1) =
     @bigint () n string(n; base=base, pad=pad)
 
@@ -253,6 +249,35 @@ function (::Type{T})(x::XInt) where T<:Base.BitSigned
         y
     end
 end
+
+
+# Binary ops
+for (fJ, fC) in ((:+, :add), (:-,:sub), (:*, :mul),
+                 (:mod, :fdiv_r), (:rem, :tdiv_r),
+                 (:gcd, :gcd), (:lcm, :lcm),
+                 (:&, :and), (:|, :ior), (:xor, :xor))
+    @eval begin
+        ($fJ)(x::XInt, y::XInt) =
+            is_short(x, y) ? XInt(($fJ)(widen(x.x), widen(y.x))) :
+                             @bigint () x y XInt(MPZ.$fC(x, y))
+    end
+end
+
+for (r, f) in ((RoundToZero, :tdiv_q),
+               (RoundDown, :fdiv_q),
+               (RoundUp, :cdiv_q))
+    @eval div(x::XInt, y::XInt, ::typeof($r)) =
+        is_short(x, y) ? XInt(div(widen(x.x), widen(y.x), $r)) :
+                         @bigint () x y XInt(MPZ.$f(x, y))
+end
+
+# For compat only. Remove in 2.0.
+div(x::XInt, y::XInt) = div(x, y, RoundToZero)
+fld(x::XInt, y::XInt) = div(x, y, RoundDown)
+cld(x::XInt, y::XInt) = div(x, y, RoundUp)
+
+# TODO: remove @bigint when float(::XInt) is implemented
+/(x::XInt, y::XInt) = @bigint () x y float(x)/float(y)
 
 
 end # module
