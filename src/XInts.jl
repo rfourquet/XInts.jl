@@ -214,6 +214,8 @@ rem(x::XInt, ::Type{T}) where T<:Union{SLimbMax,ULimbMax} =
 function rem(x::XInt, ::Type{T}) where T<:Union{Base.BitUnsigned,Base.BitSigned}
     is_short(x) && return x.x % T
     u = zero(T)
+    # TODO: this is missing an optimization that BigInt has; it would be faster here
+    # to have a chain of if/elseif based on the value of the min below
     for l = 1:min(abs(x.x), cld(sizeof(T), sizeof(Limb)))
         u += (@inbounds x.v[l] % T) << ((sizeof(Limb)<<3)*(l-1))
     end
@@ -224,5 +226,33 @@ rem(x::Integer, ::Type{XInt}) = XInt(x)
 
 isodd(x::XInt) = is_short(x) ? isodd(x.x) : isodd(@inbounds x.v[1])
 iseven(x::XInt) = !isodd(x)
+
+function (::Type{T})(x::XInt) where T<:Base.BitUnsigned
+    if is_short(x)
+        convert(T, x.x)
+    elseif sizeof(T) < sizeof(Limb)
+        convert(T, convert(Limb, x))
+    else
+        0 <= x.x <= cld(sizeof(T), sizeof(Limb)) || throw(InexactError(nameof(T), T, x))
+        x % T
+    end
+end
+
+ispos(x::XInt) = x.x > 0
+
+function (::Type{T})(x::XInt) where T<:Base.BitSigned
+    is_short(x) && return T(x.x)
+    n = abs(x.x)
+    if sizeof(T) < sizeof(Limb)
+        # @assert Short == typeof(Signed(one(Limb)))
+        convert(T, convert(Short, x))
+    else
+        0 <= n <= cld(sizeof(T), sizeof(Limb)) || throw(InexactError(nameof(T), T, x))
+        y = x % T
+        ispos(x) ⊻ (y > 0) && throw(InexactError(nameof(T), T, x)) # catch overflow
+        y
+    end
+end
+
 
 end # module

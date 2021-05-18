@@ -61,6 +61,31 @@ end
                        big(x)) % T === x
         end
     end
+
+    @testset "Bool(::XInt)" begin
+        @test Bool(XInt(0)) == false
+        @test Bool(XInt(1)) == true
+        for x = Any[rand(Int8, 10); rand(Int128, 10)]
+            (x == 0 || x == 1) && continue
+            @test_throws InexactError Bool(XInt(x))
+        end
+    end
+    @testset "$T(::XInt)" for T in Base.BitInteger_types
+        for x = rand(T, 10)
+            @test T(XInt(x)) === x
+        end
+        if sizeof(T) > sizeof(Short)
+            for x = T.(rand(T <: Signed ? Int32 : UInt32, 10))
+                @test T(XInt(x)) === x
+            end
+        end
+        @test T(XInt(typemax(T))) === typemax(T)
+        @test T(XInt(typemin(T))) === typemin(T)
+        @test_throws InexactError T(XInt(typemax(T))+XInt(1))
+        @test_throws InexactError T(XInt(typemax(T))+XInt(+10))
+        @test_throws InexactError T(XInt(typemin(T))+XInt(-1))
+        @test_throws InexactError T(XInt(typemin(T))+XInt(-10))
+    end
 end
 
 @testset "math" begin
