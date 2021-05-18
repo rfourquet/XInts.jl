@@ -9,7 +9,7 @@ import Base: +, -, *, ^, &, |, ==, /, ~, <<, >>, >>>, <, <=,
              string, widen, hastypemax, tryparse_internal,
              unsafe_trunc, trunc, mod, rem, iseven, isodd, gcd, lcm, xor, div, fld, cld,
              invmod, count_ones, trailing_zeros, trailing_ones, cmp, isqrt,
-             flipsign, powermod, gcdx, promote_rule
+             flipsign, powermod, gcdx, promote_rule, factorial, binomial
 
 mutable struct Wrap
     b::BigInt
@@ -271,6 +271,7 @@ for (fJ, fC) in ((:+, :add), (:-,:sub), (:*, :mul),
 end
 
 # TODO: 3+ args specializations for some ops, like in gmp.jl
+# TODO: add efficient sum(arr::AbstractArray{XInt})
 
 for (r, f) in ((RoundToZero, :tdiv_q),
                (RoundDown, :fdiv_q),
@@ -440,5 +441,10 @@ end
 flipsign(x::XInt, y::Integer) = signbit(y) ? -x : x
 flipsign(x::XInt, y::XInt)  = signbit(y) ? -x : x
 
+factorial(x::XInt) = signbit(x) ? throw(DomainError(x)) :
+                                  @bigint z x XInt(MPZ.fac_ui!(z, x))
+
+binomial(x::XInt, k::UInt) = @bigint z x XInt(MPZ.bin_ui!(z, x, k))
+binomial(x::XInt, k::Integer) = k < 0 ? XInt(0) : binomial(x, UInt(k))
 
 end # module

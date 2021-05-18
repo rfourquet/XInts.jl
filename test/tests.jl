@@ -178,13 +178,14 @@ end
     end
     @testset "$op(::XInt, ::XInt)" for op = (+, -, *, mod, rem, gcd, gcdx, lcm, &, |, xor,
                                              /, div, divrem, fld, cld, invmod,
-                                             cmp, <, <=, >, >=, ==, flipsign)
+                                             cmp, <, <=, >, >=, ==, flipsign, binomial)
         xs = Any[0, 1, 2, rand(0:1000, 10)..., shortmax, shortmax-1, shortmax-2,
                     rand(Int128(2)^65:Int128(2)^100, 2)..., rand(big(0):big(2)^200, 2)...,
                     shortmin] # TODO: shortmin and 0 are used twice when negated in test(...)
         for x=xs, y=xs
             iszero(y) && op ∈ (/, mod, rem, div, divrem, fld, cld, invmod) &&
                 continue
+            op === binomial && !all(0 .<= [x, y] .<= 1000) && continue
             test(op, x, y)
         end
     end
@@ -207,14 +208,17 @@ end
     end
 
     @testset "$op(::XInt, ::$T) / $op(::$T, ::XInt)" for
-        op in (+, -, *, /, cmp, <, <=, >, >=, ==, flipsign, gcd, gcdx),
+        op in (+, -, *, /, cmp, <, <=, >, >=, ==, flipsign, gcd, gcdx, binomial),
         T in [Base.uniontypes(CulongMax); Base.uniontypes(ClongMax);
              op ∈ (cmp, ) ? Base.uniontypes(CdoubleMax) : []]
 
         as, xs = make_values(T)
         for a = as, y = xs, z = (-y, y), x = (XInt(z),)
-            for (r, s) = Any[(op(a, x), op(a, z)),
-                             (op(x, a), op(z, a))]
+            op === binomial && !all(-1000 .<= [a, z] .<= 1000) && continue
+            for (r, s) = ((op == binomial) ?
+                          [(op(x, a), op(z, a))] : # TODO: remove special case
+                          Any[(op(a, x), op(a, z)),
+                              (op(x, a), op(z, a))])
 
                 if s isa BigInt
                     @test r isa XInt
@@ -261,8 +265,9 @@ end
     push!(xs, typemin(Short), typemin(Short)+1, big(typemin(Short))-1)
 
     @testset "$op(::XInt)" for op = (-, ~, isqrt, trailing_zeros, trailing_ones, count_ones,
-                                     abs)
+                                     abs, factorial)
         for x = xs
+            op === factorial && !(0 <= x <= 1000) && continue
             s = try
                 op(x)
             catch
