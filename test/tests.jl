@@ -219,3 +219,45 @@ end
         end
     end
 end
+
+@testset "bitops and unary (-)" begin
+    xs = BigInt[0, 1, 2, 3, rand(UInt8, 5)..., rand(UInt, 5)..., rand(Short, 5)...,
+                typemax(UInt), typemax(UInt)-1, typemax(UInt)-2,
+                typemax(Short), typemax(Short)-1, typemax(Short)-2]
+    append!(xs, rand(big(2)^65:big(2)^100, 5))
+    append!(xs, rand(big(0):big(2)^200, 5))
+    append!(xs, (-).(xs))
+    push!(xs, typemin(Short), typemin(Short)+1, big(typemin(Short))-1)
+
+    @testset "$op(::XInt)" for op = (-, ~, trailing_zeros, trailing_ones, count_ones)
+        for x = xs
+            s = try
+                op(x)
+            catch InexactError
+                nothing
+            end
+            if s === nothing
+                @test_throws Union{InexactError,DomainError} op(XInt(x))
+                continue
+            end
+            r = op(XInt(x))
+            @test r == s
+            if s isa BigInt
+                @test r isa XInt
+            else
+                @assert s isa Int
+                @test r isa Int
+            end
+        end
+    end
+    cs = [0, 1, 2, 3, 4, rand(5:typemax(Int8), 20)...]
+    cs2 = [cs; (-).(cs)]
+    @testset "$op(::XInt, c)" for op = (<<, >>, >>>)
+        for x = xs, T = [Base.BitInteger_types..., BigInt], c = (T <: Signed ? cs2 : cs)
+            s = op(x, T(c))
+            r = op(XInt(x), T(c))
+            @test s == r
+            @test r isa XInt
+        end
+    end
+end

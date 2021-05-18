@@ -5,9 +5,10 @@ export XInt
 using Base.GMP: Limb, BITS_PER_LIMB, SLimbMax, ULimbMax, ClongMax, CulongMax
 import Base.GMP.MPZ
 using Base.GC: @preserve
-import Base: +, -, *, &, |, ==, /, string, widen, hastypemax, tryparse_internal,
+import Base: +, -, *, &, |, ==, /, ~, <<, >>, >>>,
+             string, widen, hastypemax, tryparse_internal,
              unsafe_trunc, trunc, mod, rem, iseven, isodd, gcd, lcm, xor, div, fld, cld,
-             invmod
+             invmod, count_ones, trailing_zeros, trailing_ones
 
 mutable struct Wrap
     b::BigInt
@@ -318,6 +319,36 @@ invmod(x::XInt, y::XInt) =
 
 # unary ops
 (-)(x::XInt) = is_short(x) ? XInt(-widen(x.x)) : @bigint () x XInt(MPZ.neg(x))
+(~)(x::XInt) = is_short(x) ? XInt(~x.x) : @bigint () x XInt(MPZ.com(x))
+
+<<(x::XInt, c::UInt) = c == 0 ? x : @bigint z x XInt(MPZ.mul_2exp!(z, x, c))
+>>(x::XInt, c::UInt) = c == 0 ? x : is_short(x) ? XInt(x.x >> c) :
+                                    @bigint z x XInt(MPZ.fdiv_q_2exp!(z, x, c))
+>>>(x::XInt, c::UInt) = x >> c
+
+trailing_zeros(x::XInt) =
+    if is_short(x)
+        iszero(x.x) && throw(DomainError(x)) # InexactError for BigInt
+        trailing_zeros(x.x)
+    else
+        @bigint () x MPZ.scan1(x, 0)
+    end
+
+trailing_ones(x::XInt) =
+    if is_short(x)
+        x.x == -1 && throw(DomainError(x))
+        trailing_ones(x.x)
+    else
+        @bigint () x MPZ.scan0(x, 0)
+    end
+
+count_ones(x::XInt) =
+    if is_short(x)
+        x.x < 0 && throw(DomainError(x))
+        count_ones(x.x)
+    else
+        @bigint () x MPZ.popcount(x)
+    end
 
 
 end # module
