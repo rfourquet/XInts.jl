@@ -8,7 +8,7 @@ using Base.GC: @preserve
 import Base: +, -, *, ^, &, |, ==, /, ~, <<, >>, >>>, <, <=,
              string, widen, hastypemax, tryparse_internal,
              unsafe_trunc, trunc, mod, rem, iseven, isodd, gcd, lcm, xor, div, fld, cld,
-             invmod, count_ones, trailing_zeros, trailing_ones, cmp, isqrt
+             invmod, count_ones, trailing_zeros, trailing_ones, cmp, isqrt, flipsign
 
 mutable struct Wrap
     b::BigInt
@@ -405,5 +405,10 @@ end
 ^(x::XInt   , y::Integer) = xint_pow(x, y)
 ^(x::Integer, y::XInt   ) = xint_pow(XInt(x), y)
 ^(x::Bool   , y::XInt   ) = Base.power_by_squaring(x, y)
+
+
+flipsign(x::XInt, y::Integer) = signbit(y) ? -x : x
+flipsign(x::XInt, y::XInt)  = signbit(y) ? -x : x
+
 
 end # module

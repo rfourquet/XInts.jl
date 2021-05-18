@@ -176,7 +176,7 @@ end
     end
     @testset "$op(::XInt, ::XInt)" for op = (+, -, *, mod, rem, gcd, lcm, &, |, xor,
                                              /, div, divrem, fld, cld, invmod,
-                                             cmp, <, <=, >, >=, ==)
+                                             cmp, <, <=, >, >=, ==, flipsign)
         for _=1:20
             a, b = rand(big.(0:1000), 2)
             test(op, a, b)
@@ -189,9 +189,9 @@ end
         end
     end
     @testset "$op(::XInt, ::$T) / $op(::$T, ::XInt)" for
-        op = (+, -, *, /, cmp, <, <=, >, >=, ==),
+        op = (+, -, *, /, cmp, <, <=, >, >=, ==, flipsign),
         T = [Base.uniontypes(CulongMax); Base.uniontypes(ClongMax);
-             op === cmp ? Base.uniontypes(CdoubleMax) : []]
+             op ∈ (cmp, ) ? Base.uniontypes(CdoubleMax) : []]
 
         S = T === BigInt ? Int128 : T
         as = T[0, 1, 2, 3, rand(S, 10)..., typemax(S), typemax(S)-1, typemax(S)-2]
@@ -232,7 +232,8 @@ end
     append!(xs, (-).(xs))
     push!(xs, typemin(Short), typemin(Short)+1, big(typemin(Short))-1)
 
-    @testset "$op(::XInt)" for op = (-, ~, isqrt, trailing_zeros, trailing_ones, count_ones)
+    @testset "$op(::XInt)" for op = (-, ~, isqrt, trailing_zeros, trailing_ones, count_ones,
+                                     abs)
         for x = xs
             s = try
                 op(x)
