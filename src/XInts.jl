@@ -5,7 +5,7 @@ export XInt
 using Base.GMP: Limb, BITS_PER_LIMB, SLimbMax, ULimbMax, ClongMax, CulongMax, CdoubleMax
 import Base.GMP.MPZ
 using Base.GC: @preserve
-import Base: +, -, *, ^, &, |, ==, /, ~, <<, >>, >>>,
+import Base: +, -, *, ^, &, |, ==, /, ~, <<, >>, >>>, <, <=,
              string, widen, hastypemax, tryparse_internal,
              unsafe_trunc, trunc, mod, rem, iseven, isodd, gcd, lcm, xor, div, fld, cld,
              invmod, count_ones, trailing_zeros, trailing_ones, cmp, isqrt
@@ -360,6 +360,17 @@ cmp(y::Integer, x::XInt) = -cmp(x, y)
 cmp(x::XInt, y::CdoubleMax) = is_short(x) ? cmp(x.x, y) : @bigint () x cmp(x, y)
 cmp(y::CdoubleMax, x::XInt) = -cmp(x, y)
 
+<=(x::XInt, y::XInt) = cmp(x,y) <= 0
+<=(x::XInt, i::Integer) = cmp(x,i) <= 0
+<=(i::Integer, x::XInt) = cmp(x,i) >= 0
+<=(x::XInt, f::CdoubleMax) = isnan(f) ? false : cmp(x,f) <= 0
+<=(f::CdoubleMax, x::XInt) = isnan(f) ? false : cmp(x,f) >= 0
+
+<(x::XInt, y::XInt) = cmp(x,y) < 0
+<(x::XInt, i::Integer) = cmp(x,i) < 0
+<(i::Integer, x::XInt) = cmp(x,i) > 0
+<(x::XInt, f::CdoubleMax) = isnan(f) ? false : cmp(x,f) < 0
+<(f::CdoubleMax, x::XInt) = isnan(f) ? false : cmp(x,f) > 0
 
 isqrt(x::XInt) = is_short(x) ? XInt(isqrt(x.x)) : @bigint z x XInt(MPZ.sqrt!(z, x))
 

@@ -159,12 +159,10 @@ end
                     op(a, b)
                 end
             r = op(XInt(a), XInt(b))
-            if op === /
-                @test r isa BigFloat
-            elseif op === divrem
+            if op === divrem
                 @test r isa Tuple{XInt,XInt}
-            elseif op === cmp
-                @test r ∈ (-1, 0, 1)
+            elseif !(s isa BigInt)
+                @test typeof(s) == typeof(r)
             else
                 @test r isa XInt
             end
@@ -177,7 +175,8 @@ end
         end
     end
     @testset "$op(::XInt, ::XInt)" for op = (+, -, *, mod, rem, gcd, lcm, &, |, xor,
-                                             /, div, divrem, fld, cld, invmod, cmp)
+                                             /, div, divrem, fld, cld, invmod,
+                                             cmp, <, <=, >, >=, ==)
         for _=1:20
             a, b = rand(big.(0:1000), 2)
             test(op, a, b)
@@ -190,7 +189,7 @@ end
         end
     end
     @testset "$op(::XInt, ::$T) / $op(::$T, ::XInt)" for
-        op = (+, -, *, /, cmp),
+        op = (+, -, *, /, cmp, <, <=, >, >=, ==),
         T = [Base.uniontypes(CulongMax); Base.uniontypes(ClongMax);
              op === cmp ? Base.uniontypes(CdoubleMax) : []]
 
@@ -213,12 +212,10 @@ end
 
                 r = op(a, x)
                 s = op(a, z)
-                if op === /
-                    @test r isa BigFloat
-                elseif op === cmp
-                    @test r ∈ (-1, 0, 1)
-                else
+                if s isa BigInt
                     @test r isa XInt
+                else
+                    @test typeof(r) == typeof(s)
                 end
                 @test isequal(r, s) # not `==` for NaN
             end
@@ -256,7 +253,7 @@ end
     cs = [0, 1, 2, 3, 4, rand(5:typemax(Int8), 20)...]
     cs2 = [cs; (-).(cs)]
     @testset "$op(::XInt, c)" for op = (<<, >>, >>>, (^))
-        for x = xs, T = [Base.BitInteger_types..., BigInt, Bool] # TODO: add XInt
+        for x = xs, T = [Base.BitInteger_types..., BigInt, Bool, XInt]
             for c = (T <: Signed && op !== (^) ? cs2 : T === Bool ? [true, false] : cs)
                 s = op(x, T(c))
                 r = op(XInt(x), T(c))
