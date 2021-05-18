@@ -160,7 +160,7 @@ macro bigint(args...)
 end
 
 
-Base.show(io::IO, x::XInt) = @bigint () x show(io, x)
+Base.show(io::IO, x::XInt) = print(io, string(x))
 
 function Base.:(==)(x::XInt, y::XInt)
     if is_short(x, y)

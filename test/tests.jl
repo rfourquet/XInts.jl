@@ -96,22 +96,50 @@ end
             @test iseven(y) == iseven(x) != isodd(y)
         end
     end
+
+    @testset "iszero/isone" begin
+        @test iszero(XInt(0))
+        @test zero(XInt) === XInt(0)
+        @test isone(XInt(1))
+        @test one(XInt) === XInt(1)
+        x = rand(Int8)
+        @test iszero(x) == iszero(XInt(x))
+        @test isone(x) == isone(XInt(x))
+    end
+
+    @testset "sign" begin
+        @test sign(zero(XInt)) === XInt(0)
+        for x in rand(Int8, 10)
+            y = XInt(x)
+            @test sign(y) isa XInt
+            @test sign(y) == sign(x)
+        end
+    end
 end
 
 @testset "misc" begin
-    # automatic implementation from XInt <: Signed
-    for x = XInt[2, big(2)^70]
-        @test copy(x) === x
-        @test signed(x) === x
-        @test Signed(x) === x
-        @test widen(x) === x
+    @testset "copy, signed, Signed, widen, hastypemax" begin
+        # automatic implementation from XInt <: Signed
+        for x = XInt[2, big(2)^70]
+            @test copy(x) === x
+            @test signed(x) === x
+            @test Signed(x) === x
+            @test widen(x) === x
+        end
+        @test widen(XInt) == XInt
+        @test !Base.hastypemax(XInt)
+        if VERSION >= v"1.5"
+            @test signed(XInt) == XInt
+        end
     end
-    @test widen(XInt) == XInt
-    @test !Base.hastypemax(XInt)
-    if VERSION >= v"1.5"
-        @test signed(XInt) == XInt
+    @testset "parse, string, show" begin
+        @test parse(XInt, "123") === XInt(123)
+
+        for x = BigInt[rand(Int8, 10); rand(Int128, 10); rand(-big(2)^200:big(2)^200, 10)]
+            @test string(x) == string(XInt(x))
+            @test sprint(show, x) == sprint(show, XInt(x))
+        end
     end
-    @test parse(XInt, "123") === XInt(123)
 end
 
 @testset "trunc" begin
