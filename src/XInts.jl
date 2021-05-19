@@ -161,6 +161,7 @@ macro bigint(args...)
     Expr(:gc_preserve, lets, xs...)
 end
 
+BigInt(x::XInt) = is_short(x) ? BigInt(x.x) : @bigint () x MPZ.set(x)
 
 Base.show(io::IO, x::XInt) = print(io, string(x))
 

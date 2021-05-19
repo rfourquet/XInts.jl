@@ -3,35 +3,50 @@ using XInts: Short, shortmin, shortmax, Limb, ClongMax, CulongMax, CdoubleMax
 using BitIntegers
 
 @testset "constructor" begin
+    function test(a)
+        x = XInt(a)
+        @test x isa XInt
+        if a isa XInt
+            @test x === a
+        else
+            @test x == a
+        end
+        if !(a isa BigInt)
+            @test x == BigInt(a)
+        end
+    end
+
     @testset "XInt(::XInt)" begin
-        x = XInt(2)
-        @test XInt(x) === x
-        x = XInt(big(2)^200)
-        @test XInt(x) === x
+        test(XInt(2))
+        test(XInt(big(2)^200))
     end
     @testset "XInt(::Bool)" begin
-        @test XInt(false) == BigInt(false)
-        @test XInt(true) == BigInt(true)
+        test(true)
+        test(false)
     end
 
     @testset "XInt(::$T)" for T in [Base.BitInteger_types...,
                                     Int256, UInt256, Int512, UInt512, Int1024, UInt1024]
-        for x = rand(T, 40)
-            @test XInt(x) == BigInt(x)
+        for x = rand(T, 20)
+            test(x)
         end
         for d = T[0, 1, 2]
-            x = typemin(T) + d
-            y = typemax(T) - d
-            @test XInt(x) == BigInt(x)
-            @test XInt(y) == BigInt(y)
-            @test XInt(d) == BigInt(d)
+            test(d)
             if T <: Signed
-                @test XInt(-d) == BigInt(-d)
+                test(-d)
             end
-            x = (typemax(T) >>> 1) + d
-            y = (typemax(T) >>> 1) - d
-            @test XInt(x) == BigInt(x)
-            @test XInt(y) == BigInt(y)
+            test(typemin(T) + d)
+            test(typemax(T) - d)
+            test((typemax(T) >>> 1) + d)
+            test((typemax(T) >>> 1) - d)
+        end
+    end
+
+    @testset "XInt(::BigInt)" begin
+        for T = (Bool, Int8, Int, Int128)
+            for x = BigInt.(rand(T, 5))
+                test(x)
+            end
         end
     end
 
@@ -85,6 +100,17 @@ end
         @test_throws InexactError T(XInt(typemax(T))+XInt(+10))
         @test_throws InexactError T(XInt(typemin(T))+XInt(-1))
         @test_throws InexactError T(XInt(typemin(T))+XInt(-10))
+    end
+    @testset "BigInt(::XInt)" begin
+        for T = (Bool, Int8, Int, Int128)
+            for x = rand(T, 5)
+                z = BigInt(x)
+                y = XInt(x)
+                @test z == BigInt(y) isa BigInt
+                @test z == big(y) isa BigInt
+                @test z == y % BigInt isa BigInt
+            end
+        end
     end
 end
 
