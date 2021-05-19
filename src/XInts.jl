@@ -572,4 +572,8 @@ Base.sub_with_overflow(a::XInt, b::XInt) = a - b, false
 Base.mul_with_overflow(a::XInt, b::XInt) = a * b, false
 
 
+_copy(x::XInt) = is_short(x) ? x : XInt(x.x, copy(x.v))
+
+Base.deepcopy_internal(x::XInt, d::IdDict) = get!(() -> _copy(x), d, x)
+
 end # module

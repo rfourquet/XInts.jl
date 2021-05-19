@@ -220,10 +220,14 @@ end
 end
 
 @testset "misc" begin
-    @testset "copy, signed, Signed, widen, hastypemax" begin
+    @testset "[deep]copy, signed, Signed, widen, hastypemax" begin
         # automatic implementation from XInt <: Signed
         for x = XInt[2, big(2)^70]
             @test copy(x) === x
+            let y = deepcopy(x)
+                @test y == x
+                @test x == 2 ? x === y : y !== x
+            end
             @test signed(x) === x
             @test Signed(x) === x
             @test widen(x) === x
