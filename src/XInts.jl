@@ -13,7 +13,8 @@ import Base: +, -, *, ^, &, |, ==, /, ~, <<, >>, >>>, <, <=,
              invmod, count_ones, trailing_zeros, trailing_ones, cmp, isqrt,
              flipsign, powermod, gcdx, promote_rule, factorial, binomial,
              digits!, ndigits0zpb, signbit, sign, iszero, isone,
-             AbstractFloat, BigFloat, float, _prevpow2, _nextpow2
+             AbstractFloat, BigFloat, float, _prevpow2, _nextpow2,
+             hash, hash_integer
 
 
 mutable struct Wrap
@@ -575,5 +576,73 @@ Base.mul_with_overflow(a::XInt, b::XInt) = a * b, false
 _copy(x::XInt) = is_short(x) ? x : XInt(x.x, copy(x.v))
 
 Base.deepcopy_internal(x::XInt, d::IdDict) = get!(() -> _copy(x), d, x)
+
+if Limb === UInt
+    using Base: hash_uint
+
+    function hash_integer(x::XInt, h::UInt)
+        is_short(x) && return hash_integer(x.x, h)
+        sz = x.x
+        xv = x.v
+        b = @inbounds xv[1]
+        h ⊻= hash_uint(ifelse(sz < 0, -b, b) ⊻ h)
+        for k = 2:abs(sz)
+            h ⊻= hash_uint(@inbounds xv[k] ⊻ h)
+        end
+        h
+    end
+
+    _divLimb(n) = UInt === UInt64 ? n >>> 6 : n >>> 5
+    _modLimb(n) = UInt === UInt64 ? n & 63 : n & 31
+
+    function hash(x::XInt, h::UInt)
+        GC.@preserve x begin
+            is_short(x) && return hash(x.x, h)
+            sz = x.x
+            xv = x.v
+            if sz == 1
+                return hash(@inbounds(xv[1]), h)
+            elseif sz == -1
+                limb = @inbounds xv[1]
+                limb <= typemin(Int) % UInt && return hash(-(limb % Int), h)
+            end
+            pow = trailing_zeros(x)
+            nd = Base.ndigits0z(x, 2)
+            idx = _divLimb(pow) + 1
+            shift = _modLimb(pow) % UInt
+            upshift = BITS_PER_LIMB - shift
+            asz = abs(sz)
+            if shift == 0
+                limb = @inbounds xv[idx]
+            else
+                limb1 = @inbounds xv[idx]
+                limb2 = idx < asz ? @inbounds(xv[idx+1]) : UInt(0)
+                limb = limb2 << upshift | limb1 >> shift
+            end
+            if nd <= 1024 && nd - pow <= 53
+                return hash(ldexp(flipsign(Float64(limb), sz), pow), h)
+            end
+            h = hash_integer(1, h)
+            h = hash_integer(pow, h)
+            h ⊻= hash_uint(flipsign(limb, sz) ⊻ h)
+            for idx = idx+1:asz
+                if shift == 0
+                    limb = @inbounds xv[idx]
+                else
+                    limb1 = limb2
+                    if idx == asz
+                        limb = limb1 >> shift
+                        limb == 0 && break # don't hash leading zeros
+                    else
+                        limb2 = @inbounds xv[idx+1]
+                        limb = limb2 << upshift | limb1 >> shift
+                    end
+                end
+                h ⊻= hash_uint(limb ⊻ h)
+            end
+            return h
+        end
+    end
+end
 
 end # module

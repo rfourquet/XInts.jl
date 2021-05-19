@@ -456,3 +456,25 @@ end
         end
     end
 end
+
+@testset "hashing" begin
+    xs = Any[rand(UInt, 10); rand(UInt128, 10); rand(1:big(2)^300, 5)]
+    xs = [xs; .-(xs)]
+    for x=xs
+        h = rand(UInt)
+        a = XInt(x)
+        b = big(x)
+
+        @test hash(b) == hash(a)
+        @test hash(b, h) == hash(a, h)
+        @test Base.hash_integer(b, h) == Base.hash_integer(a, h)
+
+        for y=xs
+            iszero(y) && continue
+            a2 = XInt(y)
+            b2 = big(y)
+            @test hash(b//b2) == hash(a//a2)
+            @test hash(b//b2, h) == hash(a//a2, h)
+        end
+    end
+end
