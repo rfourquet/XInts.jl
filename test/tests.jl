@@ -109,10 +109,15 @@ end
 
     @testset "sign" begin
         @test sign(zero(XInt)) === XInt(0)
+        @test signbit(zero(XInt)) === false
+        @test signbit(one(XInt)) === false
+        @test signbit(-one(XInt)) === true
+
         for x in rand(Int8, 10)
             y = XInt(x)
             @test sign(y) isa XInt
             @test sign(y) == sign(x)
+            @test signbit(y) == signbit(x)
         end
     end
 end

@@ -3,13 +3,15 @@ module XInts
 export XInt
 
 using Base.GMP: Limb, BITS_PER_LIMB, SLimbMax, ULimbMax, ClongMax, CulongMax, CdoubleMax
+import Base.GMP: isneg, ispos
 import Base.GMP.MPZ
 using Base.GC: @preserve
 import Base: +, -, *, ^, &, |, ==, /, ~, <<, >>, >>>, <, <=,
              string, widen, hastypemax, tryparse_internal,
              unsafe_trunc, trunc, mod, rem, iseven, isodd, gcd, lcm, xor, div, fld, cld,
              invmod, count_ones, trailing_zeros, trailing_ones, cmp, isqrt,
-             flipsign, powermod, gcdx, promote_rule, factorial, binomial
+             flipsign, powermod, gcdx, promote_rule, factorial, binomial,
+             digits!, ndigits0zpb, signbit, sign, iszero, isone
 
 mutable struct Wrap
     b::BigInt
@@ -242,6 +244,12 @@ function (::Type{T})(x::XInt) where T<:Base.BitUnsigned
 end
 
 ispos(x::XInt) = x.x > 0
+isneg(x::XInt) = x.x < 0
+signbit(x::XInt) = x.x < 0
+sign(x::XInt) = XInt(sign(x.x))
+iszero(x::XInt) = iszero(x.x)
+isone(x::XInt) = is_short(x) ? isone(x.x) : isone(@inbounds x.v[1])
+# TODO: remove is_short check when we guarantee that short integers are always stored in x.x
 
 function (::Type{T})(x::XInt) where T<:Base.BitSigned
     is_short(x) && return T(x.x)
