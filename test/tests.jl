@@ -1,5 +1,5 @@
 using XInts
-using XInts: Short, shortmin, shortmax, Limb, ClongMax, CulongMax, CdoubleMax
+using XInts: Short, shortmin, shortmax, Limb, ClongMax, CulongMax, CdoubleMax, BITS_PER_LIMB
 using BitIntegers
 
 @testset "constructor" begin
@@ -177,6 +177,44 @@ end
                 @test ndigits(b, pad=pad, base=base) == ndigits(XInt(b), pad=pad, base=base)
                 @test digits(b, pad=pad, base=base) == digits(XInt(b), pad=pad, base=base)
             end
+        end
+    end
+
+    @testset "prevpow & nextpow" begin
+        # TODO: deduplicate this xs definition (from binary ops)
+        xs = Any[1, 2, rand(0:1000, 10)..., shortmax, shortmax-1, shortmax-2,
+                 rand(Int128(2)^65:Int128(2)^100, 2)..., rand(big(0):big(2)^200, 2)...,
+                 1024, big(2)^100, big(2)^200] # popcount == 1
+
+
+        for x = xs, b = Int[2, 3, 4, 5, 9, 10, rand(11:100, 6)...]
+            y = nextpow(XInt(b), XInt(x))
+            @test y isa XInt
+            @test y == nextpow(big(b), big(x))
+            if b == 2
+                # accepts other integer types for base
+                @test y == nextpow(2, XInt(x))
+            end
+            y = prevpow(XInt(b), XInt(x))
+            @test y isa XInt
+            @test y == prevpow(big(b), big(x))
+            if b == 2
+                # accepts other integer types for base
+                @test y == prevpow(2, XInt(x))
+            end
+        end
+
+        # add some x which lead to increased size (in limbs)
+        append!(xs, big.(rand(UInt, 4)) .<< (BITS_PER_LIMB .* [0, 1, 2, 3])')
+        xs = [xs; .-(xs)]
+        push!(xs, shortmin)
+        for x=xs
+            y = Base._nextpow2(XInt(x))
+            @test y isa XInt
+            @test y == Base._nextpow2(big(x))
+            y = Base._prevpow2(XInt(x))
+            @test y isa XInt
+            @test y == Base._prevpow2(big(x))
         end
     end
 end

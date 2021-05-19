@@ -13,7 +13,8 @@ import Base: +, -, *, ^, &, |, ==, /, ~, <<, >>, >>>, <, <=,
              invmod, count_ones, trailing_zeros, trailing_ones, cmp, isqrt,
              flipsign, powermod, gcdx, promote_rule, factorial, binomial,
              digits!, ndigits0zpb, signbit, sign, iszero, isone,
-             AbstractFloat, BigFloat, float
+             AbstractFloat, BigFloat, float, _prevpow2, _nextpow2
+
 
 mutable struct Wrap
     b::BigInt
@@ -512,5 +513,48 @@ end
 
 ndigits0zpb(x::XInt, b::Integer) = is_short(x) ? ndigits0zpb(x.x, b) :
                                                  @bigint () x ndigits0zpb(x, b)
+
+function _prevpow2(x::XInt)
+    if is_short(x)
+        XInt(_prevpow2(x.x))
+    else
+        len = abs(x.x)
+        @assert length(x.v) == len
+        high = @inbounds x.v[end]
+        @assert !iszero(high) # like for BigInt/mpz_t
+        shift = BITS_PER_LIMB - leading_zeros(high) - 1
+        v = fill(zero(Limb), len)
+        @inbounds v[end] = one(Limb) << shift
+        XInt(x.x, v)
+    end
+end
+
+function _nextpow2(x::XInt)
+    if is_short(x)
+        y = _nextpow2(x.x)
+        if sign(x) != sign(y)
+            @assert y == typemin(Int)
+            XInt(1, Limb[typemin(Int) % Limb])
+        else
+            XInt(y)
+        end
+    else
+        len = abs(x.x)
+        @assert length(x.v) == len
+        popcount = GC.@preserve x MPZ.mpn_popcount(pointer(x.v), len)
+        if popcount <= 1
+            @assert popcount == 1
+            return x
+        end
+        high = @inbounds x.v[end]
+        @assert !iszero(high) # like for BigInt/mpz_t
+        shift = (BITS_PER_LIMB - leading_zeros(high)) & (BITS_PER_LIMB-1)
+        newlen = len + iszero(shift)
+        v = fill(zero(Limb), newlen)
+        @inbounds v[end] = one(Limb) << shift
+        XInt(flipsign(newlen, x.x), v)
+    end
+end
+
 
 end # module
