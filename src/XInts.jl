@@ -245,6 +245,29 @@ function (::Type{T})(x::XInt) where T<:Base.BitSigned
     end
 end
 
+Float64(x::XInt, ::RoundingMode{:ToZero}) =
+    is_short(x) ? Float64(x.x, RoundToZero) : @bigint () x MPZ.get_d(x)
+
+
+function (::Type{T})(x::XInt, ::RoundingMode{:ToZero}) where T<:Union{Float16,Float32}
+    T(Float64(x, RoundToZero), RoundToZero)
+end
+
+function (::Type{T})(n::XInt, ::RoundingMode{:Down}) where T<:CdoubleMax
+    x = T(n, RoundToZero)
+    x > n ? prevfloat(x) : x
+end
+
+function (::Type{T})(n::XInt, ::RoundingMode{:Up}) where T<:CdoubleMax
+    x = T(n, RoundToZero)
+    x < n ? nextfloat(x) : x
+end
+
+for T = [Float16, Float32, Float64]
+    @eval (::Type{$T})(x::XInt, r::RoundingMode{:Nearest}=RoundNearest) =
+        is_short(x) ? $T(x.x, r) : @bigint () x $T(x, r)
+end
+
 
 # Binary ops
 for (fJ, fC) in ((:+, :add), (:-,:sub), (:*, :mul),

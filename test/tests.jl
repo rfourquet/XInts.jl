@@ -106,6 +106,7 @@ end
         @test_throws InexactError T(XInt(typemin(T))+XInt(-1))
         @test_throws InexactError T(XInt(typemin(T))+XInt(-10))
     end
+
     @testset "BigInt(::XInt)" begin
         for T = (Bool, Int8, Int, Int128)
             for x = rand(T, 5)
@@ -114,6 +115,20 @@ end
                 @test z == BigInt(y) isa BigInt
                 @test z == big(y) isa BigInt
                 @test z == y % BigInt isa BigInt
+            end
+        end
+    end
+
+    @testset "$F(::XInt, $R)" for F = (Float16, Float32, Float64),
+                                  R = (RoundToZero, RoundDown, RoundUp, RoundNearest, "")
+        for T = Base.BitInteger_types
+            for x = rand(T, 10)
+                if R == ""
+                    @test F(XInt(x)) === F(BigInt(x))
+                    # have to use BigInt because of a Julia bug
+                else
+                    @test F(XInt(x), R) === F(BigInt(x), R)
+                end
             end
         end
     end
