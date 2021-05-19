@@ -557,4 +557,19 @@ function _nextpow2(x::XInt)
 end
 
 
+Base.checked_abs(x::XInt) = abs(x)
+Base.checked_neg(x::XInt) = -x
+Base.checked_add(a::XInt, b::XInt) = a + b
+Base.checked_sub(a::XInt, b::XInt) = a - b
+Base.checked_mul(a::XInt, b::XInt) = a * b
+Base.checked_div(a::XInt, b::XInt) = div(a, b)
+Base.checked_rem(a::XInt, b::XInt) = rem(a, b)
+Base.checked_fld(a::XInt, b::XInt) = fld(a, b)
+Base.checked_mod(a::XInt, b::XInt) = mod(a, b)
+Base.checked_cld(a::XInt, b::XInt) = cld(a, b)
+Base.add_with_overflow(a::XInt, b::XInt) = a + b, false
+Base.sub_with_overflow(a::XInt, b::XInt) = a - b, false
+Base.mul_with_overflow(a::XInt, b::XInt) = a * b, false
+
+
 end # module

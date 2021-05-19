@@ -386,6 +386,28 @@ end
             @test r isa XInt
         end
     end
+
+    @testset "checked operations" begin
+        xs = XInt.([rand(1:1000, 4); rand(1:big(2)^65, 5)])
+        xs = [xs; .-(xs)]
+        fns = [getfield(Base, f[1]) => f[2] for f in
+               [:checked_add => +, :checked_sub => -, :checked_mul => *,
+                :checked_div => div, :checked_rem => rem, :checked_fld => fld,
+                :checked_mod => mod, :checked_cld => cld]]
+
+        for x=xs
+            @test Base.checked_abs(x) == abs(x)
+            @test Base.checked_neg(x) == -x
+            for y=xs, (c, f) = fns
+                @test f(x, y) == c(x, y)
+            end
+            for y=xs
+                @test Base.add_with_overflow(x, y) == (x+y, false)
+                @test Base.sub_with_overflow(x, y) == (x-y, false)
+                @test Base.mul_with_overflow(x, y) == (x*y, false)
+            end
+        end
+    end
 end
 
 @testset "bit and unary ops, etc." begin
