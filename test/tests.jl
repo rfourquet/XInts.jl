@@ -151,6 +151,17 @@ end
             @test signbit(y) == signbit(x)
         end
     end
+
+    @testset "digits" begin
+        for r = big(2).^[5, 8, 64, 200]
+            for b = rand(-r:r, 5)
+                pad = rand(0:2)
+                base = rand(8:12)
+                @test ndigits(b, pad=pad, base=base) == ndigits(XInt(b), pad=pad, base=base)
+                @test digits(b, pad=pad, base=base) == digits(XInt(b), pad=pad, base=base)
+            end
+        end
+    end
 end
 
 @testset "misc" begin

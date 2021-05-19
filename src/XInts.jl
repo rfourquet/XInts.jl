@@ -459,4 +459,25 @@ factorial(x::XInt) = signbit(x) ? throw(DomainError(x)) :
 binomial(x::XInt, k::UInt) = @bigint z x XInt(MPZ.bin_ui!(z, x, k))
 binomial(x::XInt, k::Integer) = k < 0 ? XInt(0) : binomial(x, UInt(k))
 
+function digits!(a::AbstractVector{T}, n::XInt; base::Integer = 10) where {T<:Integer}
+    if 2 ≤ base ≤ 62
+        s = codeunits(string(n; base=base))
+        i, j = firstindex(a)-1, length(s)+1
+        lasti = min(lastindex(a), firstindex(a) + length(s)-1 - isneg(n))
+        while i < lasti
+            # base ≤ 36: 0-9, plus a-z for 10-35
+            # base > 36: 0-9, plus A-Z for 10-35 and a-z for 36..61
+            x = s[j -= 1]
+            a[i += 1] = base ≤ 36 ? (x>0x39 ? x-0x57 : x-0x30) : (x>0x39 ? (x>0x60 ? x-0x3d : x-0x37) : x-0x30)
+        end
+        lasti = lastindex(a)
+        while i < lasti; a[i+=1] = zero(T); end
+        return isneg(n) ? map!(-,a,a) : a
+    end
+    return invoke(digits!, Tuple{typeof(a), Integer}, a, n; base=base) # slow generic fallback
+end
+
+ndigits0zpb(x::XInt, b::Integer) = is_short(x) ? ndigits0zpb(x.x, b) :
+                                                 @bigint () x ndigits0zpb(x, b)
+
 end # module
