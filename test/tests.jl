@@ -50,9 +50,14 @@ using BitIntegers
         end
     end
 
-    @testset "XInt(::$T)" for T in [Float16, Float32, Float64]
-        @test XInt(T(2.0)) === XInt(2)
-        @test_throws InexactError XInt(T(2.2))
+    @testset "XInt(::$F)" for F in [Float16, Float32, Float64]
+        for T = (Bool, Int8, Int32)
+            for x = F.(rand(T, 5))
+                isinteger(x) && test(x)
+            end
+        end
+        @test XInt(F(2.0)) === XInt(2)
+        @test_throws InexactError XInt(F(2.2))
     end
 end
 

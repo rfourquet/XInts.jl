@@ -165,27 +165,6 @@ BigInt(x::XInt) = is_short(x) ? BigInt(x.x) : @bigint () x MPZ.set(x)
 
 Base.show(io::IO, x::XInt) = print(io, string(x))
 
-function Base.:(==)(x::XInt, y::XInt)
-    if is_short(x, y)
-        x.x == y.x
-    else
-        @bigint () x y x == y
-    end
-end
-
-==(x::XInt, y::Integer) =
-    if is_short(x)
-        x.x == y
-    else
-        @bigint () x x == y
-    end
-
-==(x::Integer, y::XInt) = y == x
-
-# disambiguation
-==(x::XInt, y::BigInt) = invoke(==, Tuple{XInt, Integer}, x, y)
-==(x::BigInt, y::XInt) = y == x
-
 string(n::XInt; base::Integer = 10, pad::Integer = 1) =
     @bigint () n string(n; base=base, pad=pad)
 
@@ -374,6 +353,30 @@ cmp(x::XInt, y::Integer) = is_short(x) ? cmp(x.x, y) : @bigint () x cmp(x, y)
 cmp(y::Integer, x::XInt) = -cmp(x, y)
 cmp(x::XInt, y::CdoubleMax) = is_short(x) ? cmp(x.x, y) : @bigint () x cmp(x, y)
 cmp(y::CdoubleMax, x::XInt) = -cmp(x, y)
+
+function ==(x::XInt, y::XInt)
+    if is_short(x, y)
+        x.x == y.x
+    else
+        @bigint () x y x == y
+    end
+end
+
+==(x::XInt, y::Integer) =
+    if is_short(x)
+        x.x == y
+    else
+        @bigint () x x == y
+    end
+
+==(x::Integer, y::XInt) = y == x
+
+# disambiguation
+==(x::XInt, y::BigInt) = invoke(==, Tuple{XInt, Integer}, x, y)
+==(x::BigInt, y::XInt) = y == x
+
+==(x::XInt, f::CdoubleMax) = isnan(f) ? false : cmp(x, f) == 0
+==(f::CdoubleMax, x::XInt) = isnan(f) ? false : cmp(x, f) == 0
 
 <=(x::XInt, y::XInt) = cmp(x,y) <= 0
 <=(x::XInt, i::Integer) = cmp(x,i) <= 0
