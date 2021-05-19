@@ -5,13 +5,15 @@ export XInt
 using Base.GMP: Limb, BITS_PER_LIMB, SLimbMax, ULimbMax, ClongMax, CulongMax, CdoubleMax
 import Base.GMP: isneg, ispos
 import Base.GMP.MPZ
+import Base.MPFR
 using Base.GC: @preserve
 import Base: +, -, *, ^, &, |, ==, /, ~, <<, >>, >>>, <, <=,
              string, widen, hastypemax, tryparse_internal,
              unsafe_trunc, trunc, mod, rem, iseven, isodd, gcd, lcm, xor, div, fld, cld,
              invmod, count_ones, trailing_zeros, trailing_ones, cmp, isqrt,
              flipsign, powermod, gcdx, promote_rule, factorial, binomial,
-             digits!, ndigits0zpb, signbit, sign, iszero, isone
+             digits!, ndigits0zpb, signbit, sign, iszero, isone,
+             AbstractFloat, BigFloat, float
 
 mutable struct Wrap
     b::BigInt
@@ -268,6 +270,14 @@ for T = [Float16, Float32, Float64]
         is_short(x) ? $T(x.x, r) : @bigint () x $T(x, r)
 end
 
+AbstractFloat(x::XInt) = BigFloat(x)
+
+BigFloat(x::XInt, r::MPFR.MPFRRoundingMode=MPFR.ROUNDING_MODE[];
+         precision::Integer=MPFR.DEFAULT_PRECISION[]) =
+             is_short(x) ? BigFloat(x.x, r; precision=precision) :
+                           @bigint () x BigFloat(x, r; precision=precision)
+
+float(::Type{XInt}) = BigFloat
 
 # Binary ops
 for (fJ, fC) in ((:+, :add), (:-,:sub), (:*, :mul),
