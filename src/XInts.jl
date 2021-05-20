@@ -56,7 +56,7 @@ struct XInt <: Signed
     v::Union{Nothing,Vector{Limb}}
 
     XInt(x::SLimb) = new(x, nothing)
-    XInt(x::SLimb, v::Vector{Limb}) = new(x, v)
+    global _XInt(x::SLimb, v::Vector{Limb}) = new(x, v)
 end
 
 is_short(x::XInt) = x.v === nothing
@@ -69,7 +69,7 @@ function XInt(z::BigInt)
     elseif len == 1 && (x = unsafe_load(z.d)) <= slimbmax
         XInt(flipsign(x % SLimb, z.size))
     else
-        x = XInt(z.size % SLimb, Vector{Limb}(undef, len))
+        x = _XInt(z.size % SLimb, Vector{Limb}(undef, len))
         @preserve x z unsafe_copyto!(pointer(x.v), z.d, len)
         x
     end
@@ -78,7 +78,7 @@ end
 XInt(z::SLimbMax) = XInt(z % SLimb)
 
 XInt(z::Limb) = z <= slimbmax ? XInt(z % SLimb) :
-                                XInt(one(SLimb), Limb[z])
+                                _XInt(one(SLimb), Limb[z])
 
 XInt(z::SLimbW) =
     if slimbmin <= z <= slimbmax
@@ -88,8 +88,8 @@ XInt(z::SLimbW) =
         z1 = zz % Limb
         z2 = (zz >>> BITS_PER_LIMB) % Limb
         iszero(z2) ?
-            XInt(sign(z) % SLimb, [z1]) :
-            XInt(flipsign(SLimb(2), z), [z1, z2])
+            _XInt(sign(z) % SLimb, [z1]) :
+            _XInt(flipsign(SLimb(2), z), [z1, z2])
     end
 
 XInt(z::Integer) = XInt(BigInt(z)) # TODO: copy over the implementation from gmp.jl
@@ -526,7 +526,7 @@ function _prevpow2(x::XInt)
         shift = BITS_PER_LIMB - leading_zeros(high) - 1
         v = fill(zero(Limb), len)
         @inbounds v[end] = one(Limb) << shift
-        XInt(x.x, v)
+        _XInt(x.x, v)
     end
 end
 
@@ -535,7 +535,7 @@ function _nextpow2(x::XInt)
         y = _nextpow2(x.x)
         if sign(x) != sign(y)
             @assert y == typemin(Int)
-            XInt(1, Limb[typemin(Int) % Limb])
+            _XInt(1, Limb[typemin(Int) % Limb])
         else
             XInt(y)
         end
@@ -553,7 +553,7 @@ function _nextpow2(x::XInt)
         newlen = len + iszero(shift)
         v = fill(zero(Limb), newlen)
         @inbounds v[end] = one(Limb) << shift
-        XInt(flipsign(newlen, x.x), v)
+        _XInt(flipsign(newlen, x.x), v)
     end
 end
 
@@ -573,7 +573,7 @@ Base.sub_with_overflow(a::XInt, b::XInt) = a - b, false
 Base.mul_with_overflow(a::XInt, b::XInt) = a * b, false
 
 
-_copy(x::XInt) = is_short(x) ? x : XInt(x.x, copy(x.v))
+_copy(x::XInt) = is_short(x) ? x : _XInt(x.x, copy(x.v))
 
 Base.deepcopy_internal(x::XInt, d::IdDict) = get!(() -> _copy(x), d, x)
 
