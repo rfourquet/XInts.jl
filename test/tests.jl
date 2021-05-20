@@ -5,12 +5,12 @@ using BitIntegers
 function validate(x::XInt)
     @test x isa XInt
     if !XInts.is_short(x)
-        v = x.v
-        len = length(v)
-        @test len >= 1
-        @test !iszero(v[end])
-        if len == 1
-            @test v[1] >= XInts.limb1min
+        xv = x.v
+        xl = abs(x.x)
+        @test length(xv) >= xl >= 1
+        @test !iszero(xv[xl])
+        if xl == 1
+            @test xv[1] >= XInts.limb1min
         end
     end
     x

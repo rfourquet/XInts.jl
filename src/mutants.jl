@@ -2,10 +2,18 @@ const XIntV = Union{XInt, Vector{Limb}, Nothing}
 
 _vec(n::Integer) = Vector{Limb}(undef, n)
 
-getvec(x::XInt, n::Integer) = is_short(x) ? _vec(n) : x.v
-getvec!(x::XInt, n::Integer) = is_short(x) ? _vec(n) : resize!(x.v, n)
+getvec!(x::XInt, n::Integer) =
+    if is_short(x)
+        _vec(n)
+    else
+        xv = x.v
+        len = length(xv)
+        if n > len
+            Base._growend!(xv, n-len)
+        end
+        xv
+    end
 
-getvec(::Nothing, n::Integer) = _vec(n)
 getvec!(::Nothing, n::Integer) = _vec(n)
 
 XInt!(r::XIntV, z::SLimbW) =
@@ -15,26 +23,24 @@ XInt!(r::XIntV, z::SLimbW) =
         zz = abs(z)
         z1 = zz % Limb
         z2 = (zz >>> BITS_PER_LIMB) % Limb
-        rv = getvec(r, 2)
         if iszero(z2)
-            resize!(rv, 1)
+            rv = getvec!(r, 1)
             @inbounds rv[1] = z1
             _XInt(sign(z) % SLimb, rv)
         else
-            resize!(rv, 2)
+            rv = getvec!(r, 2)
             @inbounds rv[1] = z1
             @inbounds rv[2] = z2
             _XInt(flipsign(SLimb(2), z), rv)
         end
     end
 
-function normalize!(v::Vector)
-    l = length(v)
+function normalize(v::Vector, l::Integer)
+    # @assert l <= length(v)
     while l > 0
         iszero(@inbounds v[l]) || break
         l -= 1
     end
-    resize!(v, l)
     l
 end
 
@@ -51,10 +57,9 @@ function add1!(r::XIntV, x::XInt, y::Limb)
     rv = getvec!(r, xl+1)
     c = MPN.add_1(rv, x=>xl, y)
     if iszero(c)
-        resize!(rv, xl)
         rv, xl
     else
-        @inbounds rv[end] = c
+        @inbounds rv[xl+1] = c
         rv, xl+1
     end
 end
@@ -66,7 +71,7 @@ function sub1!(r::XIntV, x::XInt, y::Limb)
     xl = abs(x.x)
     rv = getvec!(r, xl)
     MPN.sub_1(rv, x=>xl, y)
-    rv, normalize!(rv)
+    rv, normalize(rv, xl)
 end
 
 add!(r::XIntV, x::XInt, y::XInt) =
@@ -89,28 +94,24 @@ add!(r::XIntV, x::XInt, y::XInt) =
         rv = getvec!(r, xl+samesign)
         if samesign
             c = MPN.add(rv, x=>xl, y=>yl) # c ∈ (0, 1)
-            if iszero(c)
-                resize!(rv, xl)
-            else
-                @inbounds rv[end] = c
-            end
+            @inbounds rv[xl+1] = c
             _XInt(flipsign(xl + c % SLimb, xz), rv)
         elseif xl > yl
             MPN.sub(rv, x=>xl, y=>yl)
-            rl = normalize!(rv)
+            rl = normalize(rv, xl)
             _XInt(flipsign(rl, xz), rv, true)
         else
             # same length, need to compare the content
             c = MPN.cmp(x=>xl, y=>yl) % Int
-            if c < 0
-                x, y = y, x
-                xl, yl = yl, xl
-            end
             if iszero(c)
                 XInt(0)
             else
+                if c < 0
+                    x, y = y, x
+                    xl, yl = yl, xl
+                end
                 MPN.sub_n(rv, x, y, xl)
-                rl = normalize!(rv)
+                rl = normalize(rv, xl)
                 _XInt(flipsign(rl, x.x), rv, true)
             end
         end

@@ -63,7 +63,7 @@ struct XInt <: Signed
 
     global function _XInt(x::SLimb, v::Vector{Limb}, normalize::Bool=false)
         if normalize
-            # we still assume length(v) == abs(x); normalize here means to not store
+            # we still assume length(v) >= abs(x); normalize here means to not store
             # a too small integer in a vector representation
             xl = abs(x)
             if xl <= 1
@@ -539,12 +539,12 @@ function _prevpow2(x::XInt)
         XInt(_prevpow2(x.x))
     else
         len = abs(x.x)
-        @assert length(x.v) == len
-        high = @inbounds x.v[end]
+        @assert length(x.v) >= len
+        high = @inbounds x.v[len]
         @assert !iszero(high) # like for BigInt/mpz_t
         shift = BITS_PER_LIMB - leading_zeros(high) - 1
         v = fill(zero(Limb), len)
-        @inbounds v[end] = one(Limb) << shift
+        @inbounds v[len] = one(Limb) << shift
         _XInt(x.x, v)
     end
 end
@@ -560,18 +560,18 @@ function _nextpow2(x::XInt)
         end
     else
         len = abs(x.x)
-        @assert length(x.v) == len
+        @assert length(x.v) >= len
         popcount = GC.@preserve x MPZ.mpn_popcount(pointer(x.v), len)
         if popcount <= 1
             @assert popcount == 1
             return x
         end
-        high = @inbounds x.v[end]
+        high = @inbounds x.v[len]
         @assert !iszero(high) # like for BigInt/mpz_t
         shift = (BITS_PER_LIMB - leading_zeros(high)) & (BITS_PER_LIMB-1)
         newlen = len + iszero(shift)
         v = fill(zero(Limb), newlen)
-        @inbounds v[end] = one(Limb) << shift
+        @inbounds v[newlen] = one(Limb) << shift
         _XInt(flipsign(newlen, x.x), v)
     end
 end
