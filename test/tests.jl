@@ -2,9 +2,27 @@ using XInts
 using XInts: SLimb, slimbmin, slimbmax, Limb, ClongMax, CulongMax, CdoubleMax, BITS_PER_LIMB
 using BitIntegers
 
+function validate(x::XInt)
+    @test x isa XInt
+    if !XInts.is_short(x)
+        v = x.v
+        len = length(v)
+        @test len >= 1
+        @test !iszero(v[end])
+        if len == 1
+            @test v[1] >= XInts.limb1min
+        end
+    end
+    x
+end
+
+validate(x) = @test x isa XInt
+
+vint(x) = validate(XInt(x))
+
 @testset "constructor" begin
     function test(a)
-        x = XInt(a)
+        x = validate(XInt(a))
         @test x isa XInt
         if a isa XInt
             @test x === a
@@ -64,7 +82,7 @@ end
 @testset "conversions" begin
     @testset "rem(::XInt, ::Type{Bool})" begin
         for x = Any[rand(Limb), big(rand(Int128)), rand(-big(2)^200:big(2)^200)]
-            @test XInt(x) % Bool === x % Bool
+            @test vint(x) % Bool === x % Bool
         end
     end
     @testset "rem(::XInt, ::Type{$T})" for T in Base.BitInteger_types
@@ -73,10 +91,10 @@ end
             push!(xs, -1, -2, typemin(T))
         end
         for x = xs
-            @test XInt(x) % T === x
-            @test XInt(big(rand(T)) << (8*sizeof(T)) +
+            @test vint(x) % T === x
+            @test vint(big(rand(T)) << (8*sizeof(T)) +
                        big(x)) % T === x
-            @test XInt(big(rand(T)) << (16*sizeof(T)) +
+            @test vint(big(rand(T)) << (16*sizeof(T)) +
                        big(rand(T)) << (8*sizeof(T)) +
                        big(x)) % T === x
         end
@@ -92,15 +110,15 @@ end
     end
     @testset "$T(::XInt)" for T in Base.BitInteger_types
         for x = rand(T, 10)
-            @test T(XInt(x)) === x
+            @test T(vint(x)) === x
         end
         if sizeof(T) > sizeof(SLimb)
             for x = T.(rand(T <: Signed ? Int32 : UInt32, 10))
-                @test T(XInt(x)) === x
+                @test T(vint(x)) === x
             end
         end
-        @test T(XInt(typemax(T))) === typemax(T)
-        @test T(XInt(typemin(T))) === typemin(T)
+        @test T(vint(typemax(T))) === typemax(T)
+        @test T(vint(typemin(T))) === typemin(T)
         @test_throws InexactError T(XInt(typemax(T))+XInt(1))
         @test_throws InexactError T(XInt(typemax(T))+XInt(+10))
         @test_throws InexactError T(XInt(typemin(T))+XInt(-1))
@@ -111,7 +129,7 @@ end
         for T = (Bool, Int8, Int, Int128)
             for x = rand(T, 5)
                 z = BigInt(x)
-                y = XInt(x)
+                y = vint(x)
                 @test z == BigInt(y) isa BigInt
                 @test z == big(y) isa BigInt
                 @test z == y % BigInt isa BigInt
@@ -126,10 +144,10 @@ end
         for T = Base.BitInteger_types
             for x = rand(T, 10)
                 if R == ""
-                    @test F(XInt(x)) == F(BigInt(x))
+                    @test F(vint(x)) == F(BigInt(x))
                     # have to use BigInt because of a Julia bug
                 else
-                    @test F(XInt(x), R) == F(BigInt(x), R)
+                    @test F(vint(x), R) == F(BigInt(x), R)
                 end
             end
         end
@@ -140,7 +158,7 @@ end
     @testset "isodd/iseven" begin
         for x = Any[rand(Int8, 5)...,
                     rand((-1, 1)) .* rand(0:big(2)^200, 5)...]
-            y = XInt(x)
+            y = vint(x)
             @test iseven(y) == iseven(x) != isodd(y)
         end
     end
@@ -188,19 +206,19 @@ end
 
 
         for x = xs, b = Int[2, 3, 4, 5, 9, 10, rand(11:100, 6)...]
-            y = nextpow(XInt(b), XInt(x))
+            y = validate(nextpow(XInt(b), XInt(x)))
             @test y isa XInt
             @test y == nextpow(big(b), big(x))
             if b == 2
                 # accepts other integer types for base
                 @test y == nextpow(2, XInt(x))
             end
-            y = prevpow(XInt(b), XInt(x))
+            y = validate(prevpow(XInt(b), XInt(x)))
             @test y isa XInt
             @test y == prevpow(big(b), big(x))
             if b == 2
                 # accepts other integer types for base
-                @test y == prevpow(2, XInt(x))
+                @test y == validate(prevpow(2, XInt(x)))
             end
         end
 
@@ -209,10 +227,10 @@ end
         xs = [xs; .-(xs)]
         push!(xs, slimbmin)
         for x=xs
-            y = Base._nextpow2(XInt(x))
+            y = validate(Base._nextpow2(XInt(x)))
             @test y isa XInt
             @test y == Base._nextpow2(big(x))
-            y = Base._prevpow2(XInt(x))
+            y = validate(Base._prevpow2(XInt(x)))
             @test y isa XInt
             @test y == Base._prevpow2(big(x))
         end
@@ -224,7 +242,7 @@ end
         # automatic implementation from XInt <: Signed
         for x = XInt[2, big(2)^70]
             @test copy(x) === x
-            let y = deepcopy(x)
+            let y = validate(deepcopy(x))
                 @test y == x
                 @test x == 2 ? x === y : y !== x
             end
@@ -239,7 +257,7 @@ end
         end
     end
     @testset "parse, string, show" begin
-        @test parse(XInt, "123") === XInt(123)
+        @test validate(parse(XInt, "123")) === XInt(123)
 
         for x = BigInt[rand(Int8, 10); rand(Int128, 10); rand(-big(2)^200:big(2)^200, 10)]
             @test string(x) == string(XInt(x))
@@ -253,12 +271,12 @@ end
 
 @testset "trunc" begin
     for T in [#=Float16,=# Float32, Float64] # TODO: add Float16, and also for BigInt
-        @test trunc(XInt, T(2.2)) === XInt(2)
-        @test trunc(XInt, T(-2.2)) === XInt(-2)
+        @test validate(trunc(XInt, T(2.2))) === XInt(2)
+        @test validate(trunc(XInt, T(-2.2))) === XInt(-2)
         @test_throws InexactError trunc(XInt, T(NaN))
         @test_throws InexactError trunc(XInt, T(Inf))
-        @test unsafe_trunc(XInt, T(2.2)) === XInt(2)
-        @test unsafe_trunc(XInt, T(-2.2)) === XInt(-2)
+        @test validate(unsafe_trunc(XInt, T(2.2))) === XInt(2)
+        @test validate(unsafe_trunc(XInt, T(-2.2))) === XInt(-2)
     end
 end
 
@@ -295,20 +313,23 @@ end
                 else
                     op(big(a), big(b))
                 end
-            r = op(XInt(a), XInt(b))
+            r = op(vint(a), vint(b))
             if op === divrem
                 @test r isa Tuple{XInt,XInt}
+                validate.(r)
             elseif op === gcdx
                 @test r isa Tuple{XInt,XInt,XInt}
+                validate.(r)
             elseif !(s isa BigInt)
                 @test typeof(s) == typeof(r)
             else
-                @test r isa XInt
+                @test validate(r) isa XInt
             end
             @test s == r
             if op === div
                 for R = (RoundToZero, RoundDown, RoundUp)
-                    @test div(big(a), big(b), R) == div(XInt(a), XInt(b), R) isa XInt
+                    @test div(big(a), big(b), R) ==
+                        validate(div(XInt(a), XInt(b), R)) isa XInt
                 end
             end
         end
@@ -326,6 +347,11 @@ end
                 continue
             op === binomial && !all(0 .<= [x, y] .<= 1000) && continue
             test(op, x, y)
+        end
+        if op === +
+            x = XInt(2)^128
+            y = validate(-x+1)
+            @test validate(x+y) == big(x) + big(y)
         end
     end
 
@@ -352,7 +378,7 @@ end
              op ∈ (cmp, ) ? Base.uniontypes(CdoubleMax) : []]
 
         as, xs = make_values(T)
-        for a = as, y = xs, z = (-y, y), x = (XInt(z),)
+        for a = as, y = xs, z = (-y, y), x = (vint(z),)
             op === binomial && !all(-1000 .<= [a, z] .<= 1000) && continue
             for (r, s) = ((op == binomial) ?
                           [(op(x, a), op(z, a))] : # TODO: remove special case
@@ -360,9 +386,10 @@ end
                               (op(x, a), op(z, a))])
 
                 if s isa BigInt
-                    @test r isa XInt
+                    @test validate(r) isa XInt
                 elseif op === gcdx
                     @test r isa Tuple{XInt,XInt,XInt}
+                    validate.(r)
                 else
                     @test typeof(r) == typeof(s)
                 end
@@ -378,18 +405,18 @@ end
         as2, xs2 = make_values(T, 2)
         for a=as1, b=filter(>=(0), as2), x=filter(!iszero, xs1)
             s = powermod(a, b, x)
-            r = powermod(a, b, XInt(x))
+            r = powermod(a, b, vint(x))
             @test s == r
-            @test r isa XInt
+            @test validate(r) isa XInt
         end
         for a=as1, x=filter(>=(0), xs1), y=filter(!iszero, xs2)
             s = powermod(a, x, y)
-            r = powermod(a, XInt(x), XInt(y))
+            r = powermod(a, vint(x), vint(y))
             @test s == r
-            @test r isa XInt
-            r = powermod(XInt(a), XInt(x), XInt(y))
+            @test validate(r) isa XInt
+            r = powermod(vint(a), XInt(x), XInt(y))
             @test s == r
-            @test r isa XInt
+            @test validate(r) isa XInt
         end
     end
 
@@ -435,10 +462,10 @@ end
                 @test_throws Union{InexactError,DomainError,DivideError} op(XInt(x))
                 continue
             end
-            r = op(XInt(x))
+            r = op(vint(x))
             @test r == s
             if s isa BigInt
-                @test r isa XInt
+                @test validate(r) isa XInt
             else
                 @assert s isa Int
                 @test r isa Int
@@ -451,9 +478,9 @@ end
         for x = xs, T = [Base.BitInteger_types..., BigInt, Bool, XInt]
             for c = (T <: Signed && op !== (^) ? cs2 : T === Bool ? [true, false] : cs)
                 s = op(x, T(c))
-                r = op(XInt(x), T(c))
+                r = op(vint(x), T(c))
                 @test s == r
-                @test r isa XInt
+                @test validate(r) isa XInt
             end
         end
     end
