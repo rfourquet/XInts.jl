@@ -200,10 +200,9 @@ end
 
     @testset "prevpow & nextpow" begin
         # TODO: deduplicate this xs definition (from binary ops)
-        xs = Any[1, 2, rand(0:1000, 10)..., slimbmax, slimbmax-1, slimbmax-2,
-                 rand(Int128(2)^65:Int128(2)^100, 2)..., rand(big(0):big(2)^200, 2)...,
+        xs = Any[1, 2, rand(3:1000, 10)..., slimbmax, slimbmax-1, slimbmax-2,
+                 rand(Int128(2)^65:Int128(2)^100, 2)..., rand(big(3):big(2)^200, 2)...,
                  1024, big(2)^100, big(2)^200] # popcount == 1
-
 
         for x = xs, b = Int[2, 3, 4, 5, 9, 10, rand(11:100, 6)...]
             y = validate(nextpow(XInt(b), XInt(x)))
@@ -220,6 +219,14 @@ end
                 # accepts other integer types for base
                 @test y == validate(prevpow(2, XInt(x)))
             end
+        end
+        for b = XInt[1, 0, -1, rand(-100:-2, 5)...]
+            @test_throws DomainError prevpow(b, XInt(rand(1:100)))
+            @test_throws DomainError nextpow(b, XInt(rand(1:100)))
+        end
+        for x = [0, -1, rand(-100:-2, 5)...]
+            @test_throws DomainError prevpow(XInt(rand(2:20)), vint(x))
+            @test_throws DomainError nextpow(XInt(rand(2:20)), vint(x))
         end
 
         # add some x which lead to increased size (in limbs)
