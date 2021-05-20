@@ -317,8 +317,10 @@ end
                                              /, div, divrem, fld, cld, invmod,
                                              cmp, <, <=, >, >=, ==, flipsign, binomial)
         xs = Any[0, 1, 2, rand(0:1000, 10)..., slimbmax, slimbmax-1, slimbmax-2,
-                    rand(Int128(2)^65:Int128(2)^100, 2)..., rand(big(0):big(2)^200, 2)...,
-                    slimbmin] # TODO: slimbmin and 0 are used twice when negated in test(...)
+                 Int128(slimbmax)+1, Int128(slimbmax)+2,
+                 (Int128(slimbmax).+rand(UInt8, 5))...,
+                 rand(Int128(2)^65:Int128(2)^100, 2)..., rand(big(0):big(2)^200, 2)...,
+                 slimbmin] # TODO: slimbmin and 0 are used twice when negated in test(...)
         for x=xs, y=xs
             iszero(y) && op ∈ (/, mod, rem, div, divrem, fld, cld, invmod) &&
                 continue

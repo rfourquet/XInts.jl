@@ -50,17 +50,44 @@ end
 
 const slimbmin = typemin(SLimb)
 const slimbmax = typemax(SLimb)
+# when there is only one limb in a vector, this limb must always be >= limb1min
+# only XInt(slimbmin) can have two different representations, as a direct integer
+# or with a length-1 vector with value limb1min
+const limb1min = slimbmin % Limb # typically 0x8000000000000000
 
 struct XInt <: Signed
     x::SLimb # immediate integer or sign+length
     v::Union{Nothing,Vector{Limb}}
 
     XInt(x::SLimb) = new(x, nothing)
-    global _XInt(x::SLimb, v::Vector{Limb}) = new(x, v)
+
+    global function _XInt(x::SLimb, v::Vector{Limb}, normalize::Bool=false)
+        if normalize
+            # we still assume length(v) == abs(x); normalize here means to not store
+            # a too small integer in a vector representation
+            xl = abs(x)
+            if xl <= 1
+                if xl == 0
+                    return new(SLimb(0), nothing)
+                else # xl == 1
+                    limb = @inbounds v[1]
+                    limb < limb1min &&
+                        return new(flipsign(limb % SLimb, x), nothing)
+                end
+            end
+        end
+        new(x, v)
+    end
 end
 
 is_short(x::XInt) = x.v === nothing
 is_short(x::XInt, y::XInt) = x.v === nothing === y.v
+
+include("MPN.jl")
+include("mutants.jl")
+
+MPN.ptr(x::XInt) = pointer(x.v::Vector{Limb})
+MPN.len(x::XInt) = abs(x.x) % MPN.Size
 
 function XInt(z::BigInt)
     len = abs(z.size)
@@ -80,17 +107,7 @@ XInt(z::SLimbMax) = XInt(z % SLimb)
 XInt(z::Limb) = z <= slimbmax ? XInt(z % SLimb) :
                                 _XInt(one(SLimb), Limb[z])
 
-XInt(z::SLimbW) =
-    if slimbmin <= z <= slimbmax
-        XInt(z % SLimb)
-    else
-        zz = abs(z)
-        z1 = zz % Limb
-        z2 = (zz >>> BITS_PER_LIMB) % Limb
-        iszero(z2) ?
-            _XInt(sign(z) % SLimb, [z1]) :
-            _XInt(flipsign(SLimb(2), z), [z1, z2])
-    end
+XInt(z::SLimbW) = XInt!(nothing, z)
 
 XInt(z::Integer) = XInt(BigInt(z)) # TODO: copy over the implementation from gmp.jl
 
@@ -282,7 +299,7 @@ BigFloat(x::XInt, r::MPFR.MPFRRoundingMode=MPFR.ROUNDING_MODE[];
 float(::Type{XInt}) = BigFloat
 
 # Binary ops
-for (fJ, fC) in ((:+, :add), (:-,:sub), (:*, :mul),
+for (fJ, fC) in ((:-,:sub), (:*, :mul),
                  (:mod, :fdiv_r), (:rem, :tdiv_r),
                  (:gcd, :gcd), (:lcm, :lcm),
                  (:&, :and), (:|, :ior), (:xor, :xor))
@@ -295,6 +312,8 @@ end
 
 # TODO: 3+ args specializations for some ops, like in gmp.jl
 # TODO: add efficient sum(arr::AbstractArray{XInt})
+
++(x::XInt, y::XInt) = add!(nothing, x, y)
 
 for (r, f) in ((RoundToZero, :tdiv_q),
                (RoundDown, :fdiv_q),
