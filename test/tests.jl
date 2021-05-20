@@ -1,5 +1,5 @@
 using XInts
-using XInts: Short, shortmin, shortmax, Limb, ClongMax, CulongMax, CdoubleMax, BITS_PER_LIMB
+using XInts: SLimb, slimbmin, slimbmax, Limb, ClongMax, CulongMax, CdoubleMax, BITS_PER_LIMB
 using BitIntegers
 
 @testset "constructor" begin
@@ -94,7 +94,7 @@ end
         for x = rand(T, 10)
             @test T(XInt(x)) === x
         end
-        if sizeof(T) > sizeof(Short)
+        if sizeof(T) > sizeof(SLimb)
             for x = T.(rand(T <: Signed ? Int32 : UInt32, 10))
                 @test T(XInt(x)) === x
             end
@@ -182,7 +182,7 @@ end
 
     @testset "prevpow & nextpow" begin
         # TODO: deduplicate this xs definition (from binary ops)
-        xs = Any[1, 2, rand(0:1000, 10)..., shortmax, shortmax-1, shortmax-2,
+        xs = Any[1, 2, rand(0:1000, 10)..., slimbmax, slimbmax-1, slimbmax-2,
                  rand(Int128(2)^65:Int128(2)^100, 2)..., rand(big(0):big(2)^200, 2)...,
                  1024, big(2)^100, big(2)^200] # popcount == 1
 
@@ -207,7 +207,7 @@ end
         # add some x which lead to increased size (in limbs)
         append!(xs, big.(rand(UInt, 4)) .<< (BITS_PER_LIMB .* [0, 1, 2, 3])')
         xs = [xs; .-(xs)]
-        push!(xs, shortmin)
+        push!(xs, slimbmin)
         for x=xs
             y = Base._nextpow2(XInt(x))
             @test y isa XInt
@@ -264,7 +264,7 @@ end
 
 @testset "comparisons" begin
     @testset "==" begin
-        xs = BigInt[shortmin, 0, 1, 2, shortmax-1, shortmax, shortmax+1, big(2)^100]
+        xs = BigInt[slimbmin, 0, 1, 2, slimbmax-1, slimbmax, slimbmax+1, big(2)^100]
         xs = [xs..., (-).(xs)...]
         for (a, b) in Iterators.product(xs, xs)
             x, y = XInt(a), XInt(b)
@@ -316,9 +316,9 @@ end
     @testset "$op(::XInt, ::XInt)" for op = (+, -, *, mod, rem, gcd, gcdx, lcm, &, |, xor,
                                              /, div, divrem, fld, cld, invmod,
                                              cmp, <, <=, >, >=, ==, flipsign, binomial)
-        xs = Any[0, 1, 2, rand(0:1000, 10)..., shortmax, shortmax-1, shortmax-2,
+        xs = Any[0, 1, 2, rand(0:1000, 10)..., slimbmax, slimbmax-1, slimbmax-2,
                     rand(Int128(2)^65:Int128(2)^100, 2)..., rand(big(0):big(2)^200, 2)...,
-                    shortmin] # TODO: shortmin and 0 are used twice when negated in test(...)
+                    slimbmin] # TODO: slimbmin and 0 are used twice when negated in test(...)
         for x=xs, y=xs
             iszero(y) && op ∈ (/, mod, rem, div, divrem, fld, cld, invmod) &&
                 continue
@@ -415,13 +415,13 @@ end
 end
 
 @testset "bit and unary ops, etc." begin
-    xs = BigInt[0, 1, 2, 3, rand(UInt8, 5)..., rand(UInt, 5)..., rand(Short, 5)...,
+    xs = BigInt[0, 1, 2, 3, rand(UInt8, 5)..., rand(UInt, 5)..., rand(SLimb, 5)...,
                 typemax(UInt), typemax(UInt)-1, typemax(UInt)-2,
-                typemax(Short), typemax(Short)-1, typemax(Short)-2]
+                typemax(SLimb), typemax(SLimb)-1, typemax(SLimb)-2]
     append!(xs, rand(big(2)^65:big(2)^100, 5))
     append!(xs, rand(big(0):big(2)^200, 5))
     append!(xs, (-).(xs))
-    push!(xs, typemin(Short), typemin(Short)+1, big(typemin(Short))-1)
+    push!(xs, typemin(SLimb), typemin(SLimb)+1, big(typemin(SLimb))-1)
 
     @testset "$op(::XInt)" for op = (-, ~, isqrt, trailing_zeros, trailing_ones, count_ones,
                                      abs, factorial)

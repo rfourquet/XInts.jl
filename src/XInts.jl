@@ -39,24 +39,24 @@ mutable struct Wrap
 end
 
 if BITS_PER_LIMB == 32
-    const Short = Int32
-    const ShortW = Int64
+    const SLimb = Int32
+    const SLimbW = Int64
 elseif BITS_PER_LIMB == 64
-    const Short = Int64
-    const ShortW = Int128
+    const SLimb = Int64
+    const SLimbW = Int128
 else
     error()
 end
 
-const shortmin = typemin(Short)
-const shortmax = typemax(Short)
+const slimbmin = typemin(SLimb)
+const slimbmax = typemax(SLimb)
 
 struct XInt <: Signed
-    x::Short # immediate integer or sign+length
+    x::SLimb # immediate integer or sign+length
     v::Union{Nothing,Vector{Limb}}
 
-    XInt(x::Short) = new(x, nothing)
-    XInt(x::Short, v::Vector{Limb}) = new(x, v)
+    XInt(x::SLimb) = new(x, nothing)
+    XInt(x::SLimb, v::Vector{Limb}) = new(x, v)
 end
 
 is_short(x::XInt) = x.v === nothing
@@ -65,31 +65,31 @@ is_short(x::XInt, y::XInt) = x.v === nothing === y.v
 function XInt(z::BigInt)
     len = abs(z.size)
     if len == 0
-        XInt(zero(Short))
-    elseif len == 1 && (x = unsafe_load(z.d)) <= shortmax
-        XInt(flipsign(x % Short, z.size))
+        XInt(zero(SLimb))
+    elseif len == 1 && (x = unsafe_load(z.d)) <= slimbmax
+        XInt(flipsign(x % SLimb, z.size))
     else
-        x = XInt(z.size % Short, Vector{Limb}(undef, len))
+        x = XInt(z.size % SLimb, Vector{Limb}(undef, len))
         @preserve x z unsafe_copyto!(pointer(x.v), z.d, len)
         x
     end
 end
 
-XInt(z::SLimbMax) = XInt(z % Short)
+XInt(z::SLimbMax) = XInt(z % SLimb)
 
-XInt(z::Limb) = z <= shortmax ? XInt(z % Short) :
-                                XInt(one(Short), Limb[z])
+XInt(z::Limb) = z <= slimbmax ? XInt(z % SLimb) :
+                                XInt(one(SLimb), Limb[z])
 
-XInt(z::ShortW) =
-    if shortmin <= z <= shortmax
-        XInt(z % Short)
+XInt(z::SLimbW) =
+    if slimbmin <= z <= slimbmax
+        XInt(z % SLimb)
     else
         zz = abs(z)
         z1 = zz % Limb
         z2 = (zz >>> BITS_PER_LIMB) % Limb
         iszero(z2) ?
-            XInt(sign(z) % Short, [z1]) :
-            XInt(flipsign(Short(2), z), [z1, z2])
+            XInt(sign(z) % SLimb, [z1]) :
+            XInt(flipsign(SLimb(2), z), [z1, z2])
     end
 
 XInt(z::Integer) = XInt(BigInt(z)) # TODO: copy over the implementation from gmp.jl
@@ -239,8 +239,8 @@ function (::Type{T})(x::XInt) where T<:Base.BitSigned
     is_short(x) && return T(x.x)
     n = abs(x.x)
     if sizeof(T) < sizeof(Limb)
-        # @assert Short == typeof(Signed(one(Limb)))
-        convert(T, convert(Short, x))
+        # @assert SLimb == typeof(Signed(one(Limb)))
+        convert(T, convert(SLimb, x))
     else
         0 <= n <= cld(sizeof(T), sizeof(Limb)) || throw(InexactError(nameof(T), T, x))
         y = x % T
