@@ -324,10 +324,11 @@ for (fJ, fC) in ((:*, :mul),
                  (:mod, :fdiv_r), (:rem, :tdiv_r),
                  (:gcd, :gcd), (:lcm, :lcm),
                  (:&, :and), (:|, :ior), (:xor, :xor))
+    fC! = Symbol(fC, :!)
     @eval begin
         ($fJ)(x::XInt, y::XInt) =
             is_short(x, y) ? XInt(($fJ)(widen(x.x), widen(y.x))) :
-                             @bigint () x y XInt(MPZ.$fC(x, y))
+                             @bigint z x y XInt(MPZ.$fC!(z, x, y))
     end
 end
 
@@ -341,12 +342,12 @@ sum(arr::AbstractArray{XInt}) = _XInt(
         add!(x, x, y, false)
     end)
 
-for (r, f) in ((RoundToZero, :tdiv_q),
-               (RoundDown, :fdiv_q),
-               (RoundUp, :cdiv_q))
+for (r, f!) in ((RoundToZero, :tdiv_q!),
+               (RoundDown, :fdiv_q!),
+               (RoundUp, :cdiv_q!))
     @eval div(x::XInt, y::XInt, ::typeof($r)) =
         is_short(x, y) ? XInt(div(widen(x.x), widen(y.x), $r)) :
-                         @bigint () x y XInt(MPZ.$f(x, y))
+                         @bigint z x y XInt(MPZ.$f!(z, x, y))
 end
 
 # For compat only. Remove in 2.0.
@@ -354,11 +355,11 @@ div(x::XInt, y::XInt) = div(x, y, RoundToZero)
 fld(x::XInt, y::XInt) = div(x, y, RoundDown)
 cld(x::XInt, y::XInt) = div(x, y, RoundUp)
 
-divrem(x::XInt, y::XInt) = is_short(x, y) ? XInt.(divrem(x.x, y.x)) :
-                                            @bigint () x y XInt.(MPZ.tdiv_qr(x, y))
+divrem(x::XInt, y::XInt) =
+    is_short(x, y) ? XInt.(divrem(x.x, y.x)) :
+                     @bigint (u, v) x y XInt.(MPZ.tdiv_qr!(u, v, x, y))
 
-# TODO: remove @bigint when float(::XInt) is implemented
-/(x::XInt, y::XInt) = @bigint () x y float(x)/float(y)
+/(x::XInt, y::XInt) = float(x)/float(y)
 
 invmod(x::XInt, y::XInt) =
     is_short(x, y) ? XInt(invmod(widen(x.x), widen(y.x))) :
@@ -366,14 +367,14 @@ invmod(x::XInt, y::XInt) =
 
 # Basic arithmetic without promotion
 +(x::XInt, c::CulongMax) = is_short(x) ? XInt(widen(x.x) + c) :
-                                         @bigint () x XInt(MPZ.add_ui(x, c))
+                                         @bigint z x XInt(MPZ.add_ui!(z, x, c))
 +(c::CulongMax, x::XInt) = x + c
 
 -(x::XInt, c::CulongMax) = is_short(x) ? XInt(widen(x.x) - c) :
-                                         @bigint () x XInt(MPZ.sub_ui(x, c))
+                                         @bigint z x XInt(MPZ.sub_ui!(z, x, c))
 
 -(c::CulongMax, x::XInt) = is_short(x) ? XInt(c - widen(x.x)) :
-                                         @bigint () x XInt(MPZ.ui_sub(c, x))
+                                         @bigint z x XInt(MPZ.ui_sub!(z, c, x))
 
 +(x::XInt, c::ClongMax) = c < 0 ? -(x, -(c % Culong)) : x + convert(Culong, c)
 +(c::ClongMax, x::XInt) = c < 0 ? -(x, -(c % Culong)) : x + convert(Culong, c)
@@ -381,22 +382,21 @@ invmod(x::XInt, y::XInt) =
 -(c::ClongMax, x::XInt) = c < 0 ? -(x + -(c % Culong)) : -(convert(Culong, c), x)
 
 *(x::XInt, c::CulongMax) = is_short(x) ? XInt(widen(x.x) * c) :
-                                         @bigint () x XInt(MPZ.mul_ui(x, c))
+                                         @bigint z x XInt(MPZ.mul_ui!(z, x, c))
 
 *(c::CulongMax, x::XInt) = x * c
 
 *(x::XInt, c::ClongMax) = is_short(x) ? XInt(widen(x.x) * c) :
-                                        @bigint () x XInt(MPZ.mul_si(x, c))
+                                        @bigint z x XInt(MPZ.mul_si!(z, x, c))
 
 *(c::ClongMax, x::XInt) = x * c
 
-# TODO: remove @bigint when float(::XInt) is implemented
-/(x::XInt, y::Union{ClongMax,CulongMax}) = @bigint () x float(x)/y
-/(x::Union{ClongMax,CulongMax}, y::XInt) = @bigint () y x/float(y)
+/(x::XInt, y::Union{ClongMax,CulongMax}) = float(x)/y
+/(x::Union{ClongMax,CulongMax}, y::XInt) = x/float(y)
 
 # unary ops
-(-)(x::XInt) = is_short(x) ? XInt(-widen(x.x)) : @bigint () x XInt(MPZ.neg(x))
-(~)(x::XInt) = is_short(x) ? XInt(~x.x) : @bigint () x XInt(MPZ.com(x))
+(-)(x::XInt) = is_short(x) ? XInt(-widen(x.x)) : @bigint z x XInt(MPZ.neg!(z, x))
+(~)(x::XInt) = is_short(x) ? XInt(~x.x) : @bigint z x XInt(MPZ.com!(z, x))
 
 <<(x::XInt, c::UInt) = c == 0 ? x : @bigint z x XInt(MPZ.mul_2exp!(z, x, c))
 >>(x::XInt, c::UInt) = c == 0 ? x : is_short(x) ? XInt(x.x >> c) :
@@ -498,7 +498,7 @@ end
 
 ^(x::XInt   , y::XInt   ) = xint_pow(x, y)
 ^(x::XInt   , y::BigInt ) = xint_pow(x, y)
-^(x::BigInt , y::XInt   ) = @bigint () y Base.GMP.bigint_pow(x, y)
+^(x::BigInt , y::XInt   ) = Base.GMP.bigint_pow(x, y)
 ^(x::XInt   , y::Bool   ) = y ? x : one(x)
 ^(x::XInt   , y::Integer) = xint_pow(x, y)
 ^(x::Integer, y::XInt   ) = xint_pow(XInt(x), y)
