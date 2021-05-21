@@ -14,7 +14,7 @@ import Base: +, -, *, ^, &, |, ==, /, ~, <<, >>, >>>, <, <=,
              flipsign, powermod, gcdx, promote_rule, factorial, binomial,
              digits!, ndigits0zpb, signbit, sign, iszero, isone,
              AbstractFloat, BigFloat, float, _prevpow2, _nextpow2,
-             hash, hash_integer, sum
+             hash, hash_integer, sum, divrem
 
 
 mutable struct Wrap
