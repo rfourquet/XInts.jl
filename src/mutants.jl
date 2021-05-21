@@ -17,7 +17,7 @@ vec!(x::XInt, n::Integer) =
 
 vec!(::Nothing, n::Integer) = _vec(n)
 
-XInt!(r::XIntV, z::SLimbW, reduce::Bool=true) =
+@inline XInt!(r::XIntV, z::SLimbW, reduce::Bool=true) =
     if slimbmin < z <= slimbmax
         zs = z % SLimb
         if reduce || r === nothing || is_short(r)
@@ -28,20 +28,24 @@ XInt!(r::XIntV, z::SLimbW, reduce::Bool=true) =
             _XInt(sign(zs), rv)
         end
     else
-        zz = abs(z)
-        z1 = zz % Limb
-        z2 = (zz >>> BITS_PER_LIMB) % Limb
-        if iszero(z2)
-            rv = vec!(r, 1)
-            @inbounds rv[1] = z1
-            _XInt(sign(z) % SLimb, rv)
-        else
-            rv = vec!(r, 2)
-            @inbounds rv[1] = z1
-            @inbounds rv[2] = z2
-            _XInt(flipsign(SLimb(2), z), rv)
-        end
+        XInt_big!(r, z, reduce)
     end
+
+@noinline function XInt_big!(r::XIntV, z::SLimbW, reduce::Bool=true)
+    zz = abs(z)
+    z1 = zz % Limb
+    z2 = (zz >>> BITS_PER_LIMB) % Limb
+    if iszero(z2)
+        rv = vec!(r, 1)
+        @inbounds rv[1] = z1
+        _XInt(sign(z) % SLimb, rv)
+    else
+        rv = vec!(r, 2)
+        @inbounds rv[1] = z1
+        @inbounds rv[2] = z2
+        _XInt(flipsign(SLimb(2), z), rv)
+    end
+end
 
 XInt!(r::XIntV, z::LimbW) =
     if z <= slimbmax
@@ -115,8 +119,7 @@ function sub1!(r::XIntV, x::XInt, y::Limb)
     end
 end
 
-# NOTE: this is still unfortunately roughly 2x slower than MPZ.add! for BigInt
-add!(r::XIntV, x::XInt, y::XInt, reduce::Bool=true) =
+@inline add!(r::XIntV, x::XInt, y::XInt, reduce::Bool=true) =
     if is_short(x)
         if is_short(y)
             XInt!(r, widen(x.x) + widen(y.x), reduce)
@@ -126,38 +129,44 @@ add!(r::XIntV, x::XInt, y::XInt, reduce::Bool=true) =
     elseif is_short(y)
         add1!(r, x, y.x, reduce)
     else
-        xl, yl = abs(x.x), abs(y.x)
-        if xl < yl
-            x, y = y, x
-            xl, yl = yl, xl
-        end
-        xz, yz = x.x, y.x
-        samesign = signbit(xz) == signbit(yz)
-        rv = vec!(r, xl+samesign)
-        if samesign
-            c = MPN.add(rv, x=>xl, y=>yl) # c ∈ (0, 1)
-            @inbounds rv[xl+1] = c
-            _XInt(flipsign(xl + c % SLimb, xz), rv)
-        elseif xl > yl
-            MPN.sub(rv, x=>xl, y=>yl)
-            rl = normalize(rv, xl)
-            _XInt(flipsign(rl, xz), rv, reduce)
+        addbig!(r, x, y, reduce)
+    end
+
+# NOTE: this is still unfortunately roughly 2x slower than MPZ.add! for BigInt
+# we recover a lot of perfs if we inline instead, but that's a big function...
+@noinline function addbig!(r::XIntV, x::XInt, y::XInt, reduce::Bool)
+    xl, yl = abs(x.x), abs(y.x)
+    if xl < yl
+        x, y = y, x
+        xl, yl = yl, xl
+    end
+    xz, yz = x.x, y.x
+    samesign = signbit(xz) == signbit(yz)
+    rv = vec!(r, xl+samesign)
+    if samesign
+        c = MPN.add(rv, x=>xl, y=>yl) # c ∈ (0, 1)
+        @inbounds rv[xl+1] = c
+        _XInt(flipsign(xl + c % SLimb, xz), rv)
+    elseif xl > yl
+        MPN.sub(rv, x=>xl, y=>yl)
+        rl = normalize(rv, xl)
+        _XInt(flipsign(rl, xz), rv, reduce)
+    else
+        # same length, need to compare the content
+        d = MPN.cmp(x=>xl, y=>yl) % Int
+        if reduce && iszero(d)
+            XInt(0)
         else
-            # same length, need to compare the content
-            d = MPN.cmp(x=>xl, y=>yl) % Int
-            if reduce && iszero(d)
-                XInt(0)
-            else
-                if d < 0
-                    x, y = y, x
-                    xl, yl = yl, xl
-                end
-                MPN.sub_n(rv, x, y, xl)
-                rl = normalize(rv, xl)
-                _XInt(flipsign(rl, x.x), rv, reduce)
+            if d < 0
+                x, y = y, x
+                xl, yl = yl, xl
             end
+            MPN.sub_n(rv, x, y, xl)
+            rl = normalize(rv, xl)
+            _XInt(flipsign(rl, x.x), rv, reduce)
         end
     end
+end
 
 add!(x::XInt, y::XInt) = add!(x, x, y)
 
