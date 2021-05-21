@@ -10,7 +10,8 @@ ptr(p::Pair) = ptr(p[1])
 ptr(p::Ptr) = p
 ptr(p::Array) = pointer(p)
 
-#mp_limb_t mpn_add_1 (mp_limb_t *rp, const mp_limb_t *s1p, mp_size_t n, mp_limb_t s2limb)
+len(b::BigInt) = abs(b.size)
+ptr(b::BigInt) = b.d
 
 add_1(rp, s1, s2) = @preserve rp s1 ccall((:__gmpn_add_1, :libgmp), Limb,
                                           (PLimb, PLimb, Size, Limb),

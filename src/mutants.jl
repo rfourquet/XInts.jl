@@ -1,12 +1,13 @@
 const XIntV = Union{XInt, Vector{Limb}, Nothing}
 
 _vec(n::Integer) = Vector{Limb}(undef, n)
+vec(x::XInt) = x.v::Vector{Limb}
 
-getvec!(x::XInt, n::Integer) =
+vec!(x::XInt, n::Integer) =
     if is_short(x)
         _vec(n)
     else
-        xv = x.v
+        xv = vec(x)
         len = length(xv)
         if n > len
             Base._growend!(xv, n-len)
@@ -14,7 +15,7 @@ getvec!(x::XInt, n::Integer) =
         xv
     end
 
-getvec!(::Nothing, n::Integer) = _vec(n)
+vec!(::Nothing, n::Integer) = _vec(n)
 
 XInt!(r::XIntV, z::SLimbW) =
     if slimbmin < z <= slimbmax
@@ -24,11 +25,11 @@ XInt!(r::XIntV, z::SLimbW) =
         z1 = zz % Limb
         z2 = (zz >>> BITS_PER_LIMB) % Limb
         if iszero(z2)
-            rv = getvec!(r, 1)
+            rv = vec!(r, 1)
             @inbounds rv[1] = z1
             _XInt(sign(z) % SLimb, rv)
         else
-            rv = getvec!(r, 2)
+            rv = vec!(r, 2)
             @inbounds rv[1] = z1
             @inbounds rv[2] = z2
             _XInt(flipsign(SLimb(2), z), rv)
@@ -42,11 +43,11 @@ XInt!(r::XIntV, z::LimbW) =
         z1 = z % Limb
         z2 = (z >>> BITS_PER_LIMB) % Limb
         if iszero(z2)
-            rv = getvec!(r, 1)
+            rv = vec!(r, 1)
             @inbounds rv[1] = z1
             _XInt(SLimb(1), rv)
         else
-            rv = getvec!(r, 2)
+            rv = vec!(r, 2)
             @inbounds rv[1] = z1
             @inbounds rv[2] = z2
             _XInt(SLimb(2), rv)
@@ -72,7 +73,7 @@ end
 
 function add1!(r::XIntV, x::XInt, y::Limb)
     xl = abs(x.x)
-    rv = getvec!(r, xl+1)
+    rv = vec!(r, xl+1)
     c = MPN.add_1(rv, x=>xl, y)
     if iszero(c)
         rv, xl
@@ -87,11 +88,12 @@ function sub1!(r::XIntV, x::XInt, y::Limb)
     # is <= |typemmin(SLimb)|, and if x is made of one limb, then
     # x.v[1] >= |typemmin(SLimb)| by specification
     xl = abs(x.x)
-    rv = getvec!(r, xl)
+    rv = vec!(r, xl)
     MPN.sub_1(rv, x=>xl, y)
     rv, normalize(rv, xl)
 end
 
+# NOTE: this is still unfortunately roughly 2x slower than MPZ.add! for BigInt
 add!(r::XIntV, x::XInt, y::XInt) =
     if is_short(x)
         if is_short(y)
@@ -109,7 +111,7 @@ add!(r::XIntV, x::XInt, y::XInt) =
         end
         xz, yz = x.x, y.x
         samesign = signbit(xz) == signbit(yz)
-        rv = getvec!(r, xl+samesign)
+        rv = vec!(r, xl+samesign)
         if samesign
             c = MPN.add(rv, x=>xl, y=>yl) # c ∈ (0, 1)
             @inbounds rv[xl+1] = c
@@ -120,11 +122,11 @@ add!(r::XIntV, x::XInt, y::XInt) =
             _XInt(flipsign(rl, xz), rv, true)
         else
             # same length, need to compare the content
-            c = MPN.cmp(x=>xl, y=>yl) % Int
-            if iszero(c)
+            d = MPN.cmp(x=>xl, y=>yl) % Int
+            if iszero(d)
                 XInt(0)
             else
-                if c < 0
+                if d < 0
                     x, y = y, x
                     xl, yl = yl, xl
                 end
