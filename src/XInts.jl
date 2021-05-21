@@ -70,9 +70,9 @@ struct XInt <: Signed
     # unsafe version which doesn't check for typemin(SLimb)
     _XInt(x::SLimb, ::Nothing=nothing) = new(x, nothing)
 
-    function _XInt(x::SLimb, v::Vector{Limb}, normalize::Bool=false)
-        if normalize
-            # we still assume length(v) >= abs(x); normalize here means to not store
+    function _XInt(x::SLimb, v::Vector{Limb}, reduce::Bool=false)
+        if reduce
+            # we still assume length(v) >= abs(x); reduce here means to not store
             # a too small integer in a vector representation
             xl = abs(x)
             if xl <= 1
@@ -88,6 +88,17 @@ struct XInt <: Signed
         new(x, v)
     end
 end
+
+
+XInt(x::XInt) = x
+
+# reducing version of XInt(::XInt)
+_XInt(x::XInt) =
+    if x.v === nothing
+        x
+    else
+        _XInt(x.x, vec(x), true)
+    end
 
 is_short(x::XInt) = x.v === nothing
 is_short(x::XInt, y::XInt) = x.v === nothing === y.v
@@ -122,8 +133,6 @@ XInt(z::Union{ULimbMax,SLimbMax}) = _XInt(z % SLimb)
 XInt(z::Union{SLimbW,LimbW}) = XInt!(nothing, z)
 
 XInt(z::Integer) = XInt(BigInt(z)) # TODO: copy over the implementation from gmp.jl
-
-XInt(x::XInt) = x
 
 function XInt(x::Float64)
     isinteger(x) || throw(InexactError(:XInt, XInt, x))
@@ -327,7 +336,10 @@ end
 +(x::XInt, y::XInt) = add!(nothing, x, y)
 -(x::XInt, y::XInt) = sub!(nothing, x, y)
 
-sum(arr::AbstractArray{XInt}) = foldl(add!, arr; init=XInt(0))
+sum(arr::AbstractArray{XInt}) = _XInt(
+    foldl(arr; init=XInt(0)) do x, y
+        add!(x, x, y, false)
+    end)
 
 for (r, f) in ((RoundToZero, :tdiv_q),
                (RoundDown, :fdiv_q),
