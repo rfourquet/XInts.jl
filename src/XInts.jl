@@ -395,7 +395,7 @@ invmod(x::XInt, y::XInt) =
 /(x::Union{ClongMax,CulongMax}, y::XInt) = x/float(y)
 
 # unary ops
-(-)(x::XInt) = is_short(x) ? XInt(-widen(x.x)) : @bigint z x XInt(MPZ.neg!(z, x))
+(-)(x::XInt) = _XInt(-x.x, _copy(x.v))
 (~)(x::XInt) = is_short(x) ? XInt(~x.x) : @bigint z x XInt(MPZ.com!(z, x))
 
 <<(x::XInt, c::UInt) = c == 0 ? x : @bigint z x XInt(MPZ.mul_2exp!(z, x, c))
@@ -618,7 +618,9 @@ Base.sub_with_overflow(a::XInt, b::XInt) = a - b, false
 Base.mul_with_overflow(a::XInt, b::XInt) = a * b, false
 
 
-_copy(x::XInt) = is_short(x) ? x : _XInt(x.x, copy(x.v))
+_copy(x::XInt) = _XInt(x.x, _copy(x.v))
+_copy(v::Vector) = copy(v)
+_copy(::Nothing) = nothing
 
 Base.deepcopy_internal(x::XInt, d::IdDict) = get!(() -> _copy(x), d, x)
 
