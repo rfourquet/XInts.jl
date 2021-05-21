@@ -1,6 +1,6 @@
 using XInts
 using XInts: SLimb, slimbmin, slimbmax, Limb, ClongMax, CulongMax, CdoubleMax, BITS_PER_LIMB,
-             add!, sub!, SLimbW
+             add!, sub!, com!, SLimbW
 using BitIntegers
 import Random
 
@@ -323,6 +323,7 @@ end
 opmap(x) = x
 opmap(::typeof(add!)) = +
 opmap(::typeof(sub!)) = -
+opmap(::typeof(com!)) = ~
 
 @testset "operations" begin
     function test(op, x, y)
@@ -479,11 +480,13 @@ end
     push!(xs, typemin(SLimb), typemin(SLimb)+1, big(typemin(SLimb))-1)
 
     @testset "$op(::XInt)" for op = (-, ~, isqrt, trailing_zeros, trailing_ones, count_ones,
-                                     abs, factorial)
+                                     abs, factorial, com!)
+
+        @assert xs isa Vector{BigInt} # so that mutating ops don't mutate xs themselves
         for x = xs
             op === factorial && !(0 <= x <= 1000) && continue
             s = try
-                op(x)
+                opmap(op)(x)
             catch
                 @test_throws Union{InexactError,DomainError,DivideError} op(XInt(x))
                 continue
@@ -498,6 +501,7 @@ end
             end
         end
     end
+
     cs = [0, 1, 2, 3, 4, rand(5:typemax(Int8), 20)...]
     cs2 = [cs; (-).(cs)]
     @testset "$op(::XInt, c)" for op = (<<, >>, >>>, (^))

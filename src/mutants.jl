@@ -74,7 +74,7 @@ function normalize(v::Vector, l::Integer)
     l
 end
 
-function add1!(r::XIntV, x::XInt, y::SLimb, reduce::Bool)
+function add1!(r::XIntV, x::XInt, y::SLimb, reduce::Bool=true)
     # @assert !is_short(x)
     samesign = signbit(x) == signbit(y)
     rv, rl = samesign ?
@@ -174,3 +174,17 @@ neg!(x::XInt) = _XInt(-x.x, x.v)
 
 sub!(r::XIntV, x::XInt, y::XInt, reduce::Bool=true) = add!(r, x, neg!(y), reduce)
 sub!(x::XInt, y::XInt) = sub!(x, x, y)
+
+# set r to ~x == -(x+1)
+com!(r::XIntV, x::XInt=r) =
+    if is_short(x)
+        if x.x !== slimbmax
+            _XInt(~x.x)
+        else
+            rv = vec!(r, 1)
+            @inbounds rv[1] = limb1min
+            _XInt(-one(SLimb), rv)
+        end
+    else
+         neg!(add1!(r, x, one(SLimb)))
+    end

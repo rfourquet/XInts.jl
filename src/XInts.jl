@@ -396,7 +396,7 @@ invmod(x::XInt, y::XInt) =
 
 # unary ops
 (-)(x::XInt) = _XInt(-x.x, _copy(x.v))
-(~)(x::XInt) = is_short(x) ? XInt(~x.x) : @bigint z x XInt(MPZ.com!(z, x))
+(~)(x::XInt) = com!(nothing, x)
 
 <<(x::XInt, c::UInt) = c == 0 ? x : @bigint z x XInt(MPZ.mul_2exp!(z, x, c))
 >>(x::XInt, c::UInt) = c == 0 ? x : is_short(x) ? XInt(x.x >> c) :
