@@ -8,6 +8,7 @@ const Size = Clong # mp_size_t
 len(p::Pair) = p[2]
 ptr(p::Pair) = ptr(p[1])
 ptr(p::Ptr) = p
+len(p::Array) = length(p)
 ptr(p::Array) = pointer(p)
 
 len(b::BigInt) = abs(b.size)
@@ -33,8 +34,8 @@ sub_n(rp, s1, s2, n) = @preserve rp s1 s2 ccall((:__gmpn_sub_n, :libgmp), Limb,
                                                 (PLimb, PLimb, PLimb, Size),
                                                 ptr(rp), ptr(s1), ptr(s2), n)
 
-cmp(s1, s2) = @preserve s1 s2 ccall((:__gmpn_cmp, :libgmp), Cint,
-                                    (Ptr{Limb}, Ptr{Limb}, Clong),
-                                    ptr(s1), ptr(s2), len(s1))
+cmp(s1, s2, n=len(s1)) = @preserve s1 s2 ccall((:__gmpn_cmp, :libgmp), Cint,
+                                               (Ptr{Limb}, Ptr{Limb}, Clong),
+                                               ptr(s1), ptr(s2), n)
 
 end # MPN

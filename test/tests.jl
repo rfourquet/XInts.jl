@@ -2,6 +2,7 @@ using XInts
 using XInts: SLimb, slimbmin, slimbmax, Limb, ClongMax, CulongMax, CdoubleMax, BITS_PER_LIMB,
              add!, sub!, SLimbW
 using BitIntegers
+import Random
 
 function validate(x::XInt)
     @test x isa XInt
@@ -529,6 +530,26 @@ end
             b2 = big(y)
             @test hash(b//b2) == hash(a//a2)
             @test hash(b//b2, h) == hash(a//a2, h)
+        end
+    end
+end
+
+@testset "rand" begin
+    xs = BigInt[[0, 1, 2]; rand(Int8, 5); rand(SLimb, 10); rand(Int128, 5);
+                rand(big(1):big(2)^300, 5)]
+    as = [xs; .-(xs)]
+    rng = Random.MersenneTwister()
+
+    for a=as, x=xs, b = (x, a+x)
+        # tests (a big, b small) and vice-versa, and length(r) small even if a, b bigs
+        r = XInt(a):XInt(b)
+        if isempty(r)
+            @test_throws ArgumentError rand(r)
+        else
+            @test validate(rand(r)) ∈ r
+            sp = Random.Sampler(Random.MersenneTwister, r)
+            z = XInt(0)
+            @test validate(Random.rand!(rng, z, sp)) ∈ r
         end
     end
 end

@@ -172,5 +172,5 @@ add!(x::XInt, y::XInt) = add!(x, x, y)
 
 neg!(x::XInt) = _XInt(-x.x, x.v)
 
-sub!(r::XIntV, x::XInt, y::XInt) = add!(r, x, neg!(y))
+sub!(r::XIntV, x::XInt, y::XInt, reduce::Bool=true) = add!(r, x, neg!(y), reduce)
 sub!(x::XInt, y::XInt) = sub!(x, x, y)

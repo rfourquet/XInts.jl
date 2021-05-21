@@ -690,4 +690,69 @@ if Limb === UInt
     end
 end
 
+## Random
+
+import Random: Sampler, rand, rand!
+using Random: Repetition, AbstractRNG
+
+
+struct SamplerXInt <: Sampler{XInt}
+    a::XInt           # first
+    m::XInt           # range length - 1
+    nlimbs::SLimb     # number of limbs in generated XInt's (z ∈ [0, m])
+    nlimbsmax::SLimb  # max number of limbs for z+a
+    mask::Limb        # applied to the highest limb
+end
+
+safe_len(x::XInt) = is_short(x) ? SLimb(iszero(x)) : abs(x.x)
+
+function SamplerXInt(r::AbstractUnitRange{XInt})
+    r1, r2 = first(r), last(r)
+    @assert !is_short(r1, r2)
+    # TODO: if m is immediate, maybe use an SLimb regular sampler?
+    m = sub!(nothing, r2, r1, false) # false, because of MPN.cmp in rand!
+    m < 0 && throw(ArgumentError("range must be non-empty"))
+    nd = ndigits(m, base=2)
+    nlimbs, highbits = divrem(nd, 8*sizeof(Limb))
+    highbits > 0 && (nlimbs += 1)
+    mask = highbits == 0 ? ~zero(Limb) : one(Limb)<<highbits - one(Limb)
+    nlimbsmax = max(nlimbs, safe_len(r2), safe_len(r1))
+    SamplerXInt(r1, m, nlimbs, nlimbsmax, mask)
+end
+
+struct SamplerXIntSmall{SP<:Sampler{SLimb}} <: Sampler{XInt}
+    sp::SP
+end
+
+function Sampler(::Type{RNG}, r::AbstractUnitRange{XInt}, N::Repetition
+                 ) where {RNG<:AbstractRNG}
+    r1, r2 = first(r), last(r)
+    if is_short(r1, r2)
+        SamplerXIntSmall(Sampler(RNG, r1.x:r2.x, N))
+    else
+        SamplerXInt(r)
+    end
+end
+
+rand(rng::AbstractRNG, sp::SamplerXInt) =
+    rand!(rng, _XInt(0, _vec(sp.nlimbsmax), false), sp)
+
+function rand!(rng::AbstractRNG, x::XInt, sp::SamplerXInt)
+    nlimbs = sp.nlimbs
+    limbs = resize!(vec!(x, sp.nlimbsmax), nlimbs)
+    while true
+        rand!(rng, limbs)
+        @inbounds limbs[end] &= sp.mask
+        MPN.cmp(limbs, sp.m, nlimbs) <= 0 && break
+    end
+    len = normalize(limbs, nlimbs)
+    _XInt(add!(_XInt(len, limbs, false), sp.a))
+end
+
+rand(rng::AbstractRNG, sp::SamplerXIntSmall) = rand!(rng, _XInt(0), sp)
+
+rand!(rng::AbstractRNG, ::XInt, sp::SamplerXIntSmall) =
+    _XInt(rand(rng, sp.sp))
+
+
 end # module
