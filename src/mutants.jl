@@ -64,6 +64,7 @@ function normalize(v::Vector, l::Integer)
 end
 
 function add1!(r::XIntV, x::XInt, y::SLimb)
+    # @assert !is_short(x)
     samesign = signbit(x) == signbit(y)
     rv, rl = samesign ?
         add1!(r, x, abs(y) % Limb) :
@@ -85,8 +86,8 @@ end
 
 function sub1!(r::XIntV, x::XInt, y::Limb)
     # we know that abs(x) >= y, as y comes from a SLimb, whose absolute value
-    # is <= |typemmin(SLimb)|, and if x is made of one limb, then
-    # x.v[1] >= |typemmin(SLimb)| by specification
+    # is <= |typemmin(SLimb)| == limb1min, and if x is made of one limb, then
+    # x.v[1] >= limb1min by specification
     xl = abs(x.x)
     rv = vec!(r, xl)
     MPN.sub_1(rv, x=>xl, y)
@@ -137,6 +138,9 @@ add!(r::XIntV, x::XInt, y::XInt) =
         end
     end
 
+add!(x::XInt, y::XInt) = add!(x, x, y)
+
 neg!(x::XInt) = _XInt(-x.x, x.v)
 
 sub!(r::XIntV, x::XInt, y::XInt) = add!(r, x, neg!(y))
+sub!(x::XInt, y::XInt) = sub!(x, x, y)

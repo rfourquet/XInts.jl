@@ -1,5 +1,6 @@
 using XInts
-using XInts: SLimb, slimbmin, slimbmax, Limb, ClongMax, CulongMax, CdoubleMax, BITS_PER_LIMB
+using XInts: SLimb, slimbmin, slimbmax, Limb, ClongMax, CulongMax, CdoubleMax, BITS_PER_LIMB,
+             add!, sub!
 using BitIntegers
 
 function validate(x::XInt)
@@ -309,6 +310,10 @@ end
     end
 end
 
+opmap(x) = x
+opmap(::typeof(add!)) = +
+opmap(::typeof(sub!)) = -
+
 @testset "operations" begin
     function test(op, x, y)
         for a = (-x, x), b = (-y, y)
@@ -320,8 +325,9 @@ end
                         continue
                     end
                 else
-                    op(big(a), big(b))
+                    opmap(op)(big(a), big(b))
                 end
+            @assert !(a isa XInt) # so that if op is mutating, it doesn't mutate a
             r = op(vint(a), vint(b))
             if op === divrem
                 @test r isa Tuple{XInt,XInt}
@@ -345,7 +351,8 @@ end
     end
     @testset "$op(::XInt, ::XInt)" for op = (+, -, *, mod, rem, gcd, gcdx, lcm, &, |, xor,
                                              /, div, divrem, fld, cld, invmod,
-                                             cmp, <, <=, >, >=, ==, flipsign, binomial)
+                                             cmp, <, <=, >, >=, ==, flipsign, binomial,
+                                             add!, sub!)
         xs = Any[0, 1, 2, rand(0:1000, 10)..., slimbmax, slimbmax-1, slimbmax-2,
                  Int128(slimbmax)+1, Int128(slimbmax)+2,
                  (Int128(slimbmax).+rand(UInt8, 5))...,
