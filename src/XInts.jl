@@ -68,7 +68,7 @@ struct XInt <: Signed
     global _XInt
 
     # unsafe version which doesn't check for typemin(SLimb)
-    _XInt(x::SLimb) = new(x, nothing)
+    _XInt(x::SLimb, ::Nothing=nothing) = new(x, nothing)
 
     function _XInt(x::SLimb, v::Vector{Limb}, normalize::Bool=false)
         if normalize
@@ -311,7 +311,7 @@ BigFloat(x::XInt, r::MPFR.MPFRRoundingMode=MPFR.ROUNDING_MODE[];
 float(::Type{XInt}) = BigFloat
 
 # Binary ops
-for (fJ, fC) in ((:-,:sub), (:*, :mul),
+for (fJ, fC) in ((:*, :mul),
                  (:mod, :fdiv_r), (:rem, :tdiv_r),
                  (:gcd, :gcd), (:lcm, :lcm),
                  (:&, :and), (:|, :ior), (:xor, :xor))
@@ -326,6 +326,7 @@ end
 # TODO: add efficient sum(arr::AbstractArray{XInt})
 
 +(x::XInt, y::XInt) = add!(nothing, x, y)
+-(x::XInt, y::XInt) = sub!(nothing, x, y)
 
 for (r, f) in ((RoundToZero, :tdiv_q),
                (RoundDown, :fdiv_q),

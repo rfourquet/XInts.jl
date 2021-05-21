@@ -134,3 +134,7 @@ add!(r::XIntV, x::XInt, y::XInt) =
             end
         end
     end
+
+neg!(x::XInt) = _XInt(-x.x, x.v)
+
+sub!(r::XIntV, x::XInt, y::XInt) = add!(r, x, neg!(y))
