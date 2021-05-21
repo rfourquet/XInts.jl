@@ -51,17 +51,24 @@ end
 const slimbmin = typemin(SLimb)
 const slimbmax = typemax(SLimb)
 # when there is only one limb in a vector, this limb must always be >= limb1min
-# only XInt(slimbmin) can have two different representations, as a direct integer
-# or with a length-1 vector with value limb1min
+# reciprocally, a direct integer must have its absolute value < limb1min
 const limb1min = slimbmin % Limb # typically 0x8000000000000000
 
 struct XInt <: Signed
     x::SLimb # immediate integer or sign+length
     v::Union{Nothing,Vector{Limb}}
 
-    XInt(x::SLimb) = new(x, nothing)
+    XInt(x::SLimb) =
+        x === typemin(SLimb) ?
+            new(-one(SLimb), [limb1min]) :
+            new(x, nothing)
 
-    global function _XInt(x::SLimb, v::Vector{Limb}, normalize::Bool=false)
+    global _XInt
+
+    # unsafe version which doesn't check for typemin(SLimb)
+    _XInt(x::SLimb) = new(x, nothing)
+
+    function _XInt(x::SLimb, v::Vector{Limb}, normalize::Bool=false)
         if normalize
             # we still assume length(v) >= abs(x); normalize here means to not store
             # a too small integer in a vector representation
@@ -102,10 +109,13 @@ function XInt(z::BigInt)
     end
 end
 
-XInt(z::SLimbMax) = XInt(z % SLimb)
+# only SLimb in this Union needs to be validated, but is taken care of by
+# another more specific constructor
+XInt(z::SLimbMax) = _XInt(z % SLimb)
 
-XInt(z::Limb) = z <= slimbmax ? XInt(z % SLimb) :
-                                _XInt(one(SLimb), Limb[z])
+fits(z::Limb) = !Core.is_top_bit_set(z) # z < limb1min
+XInt(z::Limb) = fits(z) ? _XInt(z % SLimb) :
+                          _XInt(one(SLimb), Limb[z])
 
 XInt(z::SLimbW) = XInt!(nothing, z)
 

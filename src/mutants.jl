@@ -17,8 +17,8 @@ getvec!(x::XInt, n::Integer) =
 getvec!(::Nothing, n::Integer) = _vec(n)
 
 XInt!(r::XIntV, z::SLimbW) =
-    if slimbmin <= z <= slimbmax
-        XInt(z % SLimb)
+    if slimbmin < z <= slimbmax
+        _XInt(z % SLimb)
     else
         zz = abs(z)
         z1 = zz % Limb

@@ -4,7 +4,9 @@ using BitIntegers
 
 function validate(x::XInt)
     @test x isa XInt
-    if !XInts.is_short(x)
+    if XInts.is_short(x)
+        @test x.x != slimbmin
+    else
         xv = x.v
         xl = abs(x.x)
         @test length(xv) >= xl >= 1
@@ -330,7 +332,7 @@ end
             elseif !(s isa BigInt)
                 @test typeof(s) == typeof(r)
             else
-                @test validate(r) isa XInt
+                validate(r)
             end
             @test s == r
             if op === div
