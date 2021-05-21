@@ -41,9 +41,11 @@ end
 if BITS_PER_LIMB == 32
     const SLimb = Int32
     const SLimbW = Int64
+    const LimbW = UInt64
 elseif BITS_PER_LIMB == 64
     const SLimb = Int64
     const SLimbW = Int128
+    const LimbW = UInt128
 else
     error()
 end
@@ -109,15 +111,15 @@ function XInt(z::BigInt)
     end
 end
 
-# only SLimb in this Union needs to be validated, but is taken care of by
-# another more specific constructor
-XInt(z::SLimbMax) = _XInt(z % SLimb)
-
 fits(z::Limb) = !Core.is_top_bit_set(z) # z < limb1min
 XInt(z::Limb) = fits(z) ? _XInt(z % SLimb) :
                           _XInt(one(SLimb), Limb[z])
 
-XInt(z::SLimbW) = XInt!(nothing, z)
+# only SLimb and Limb in this Union need to be validated, but are taken care of by
+# other more specific constructors
+XInt(z::Union{ULimbMax,SLimbMax}) = _XInt(z % SLimb)
+
+XInt(z::Union{SLimbW,LimbW}) = XInt!(nothing, z)
 
 XInt(z::Integer) = XInt(BigInt(z)) # TODO: copy over the implementation from gmp.jl
 

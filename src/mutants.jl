@@ -35,6 +35,24 @@ XInt!(r::XIntV, z::SLimbW) =
         end
     end
 
+XInt!(r::XIntV, z::LimbW) =
+    if z <= slimbmax
+        _XInt(z % SLimb)
+    else
+        z1 = z % Limb
+        z2 = (z >>> BITS_PER_LIMB) % Limb
+        if iszero(z2)
+            rv = getvec!(r, 1)
+            @inbounds rv[1] = z1
+            _XInt(SLimb(1), rv)
+        else
+            rv = getvec!(r, 2)
+            @inbounds rv[1] = z1
+            @inbounds rv[2] = z2
+            _XInt(SLimb(2), rv)
+        end
+    end
+
 function normalize(v::Vector, l::Integer)
     # @assert l <= length(v)
     while l > 0
