@@ -1,6 +1,6 @@
 using XInts
 using XInts: SLimb, slimbmin, slimbmax, Limb, ClongMax, CulongMax, CdoubleMax, BITS_PER_LIMB,
-             add!, sub!
+             add!, sub!, SLimbW
 using BitIntegers
 
 function validate(x::XInt)
@@ -244,6 +244,15 @@ end
             @test y isa XInt
             @test y == Base._prevpow2(big(x))
         end
+    end
+
+    @testset "sum" begin
+        xs = BigInt[rand(Int8, rand(1:10)); rand(SLimb, rand(1:10))]
+        @test sum(xs) == sum(XInt.(xs))
+        append!(xs, rand(SLimbW, rand(1:10)))
+        @test sum(xs) == sum(XInt.(xs))
+        append!(xs, rand(-big(2)^200:big(2)^200))
+        @test sum(xs) == sum(XInt.(xs))
     end
 end
 

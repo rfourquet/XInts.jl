@@ -14,7 +14,7 @@ import Base: +, -, *, ^, &, |, ==, /, ~, <<, >>, >>>, <, <=,
              flipsign, powermod, gcdx, promote_rule, factorial, binomial,
              digits!, ndigits0zpb, signbit, sign, iszero, isone,
              AbstractFloat, BigFloat, float, _prevpow2, _nextpow2,
-             hash, hash_integer
+             hash, hash_integer, sum
 
 
 mutable struct Wrap
@@ -323,10 +323,11 @@ for (fJ, fC) in ((:*, :mul),
 end
 
 # TODO: 3+ args specializations for some ops, like in gmp.jl
-# TODO: add efficient sum(arr::AbstractArray{XInt})
 
 +(x::XInt, y::XInt) = add!(nothing, x, y)
 -(x::XInt, y::XInt) = sub!(nothing, x, y)
+
+sum(arr::AbstractArray{XInt}) = foldl(add!, arr; init=XInt(0))
 
 for (r, f) in ((RoundToZero, :tdiv_q),
                (RoundDown, :fdiv_q),
