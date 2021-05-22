@@ -1,6 +1,6 @@
 using XInts
 using XInts: SLimb, slimbmin, slimbmax, Limb, ClongMax, CulongMax, CdoubleMax, BITS_PER_LIMB,
-             add!, sub!, com!, SLimbW
+             add!, sub!, com!, lshift!, SLimbW
 using BitIntegers
 import Random
 
@@ -324,6 +324,7 @@ opmap(x) = x
 opmap(::typeof(add!)) = +
 opmap(::typeof(sub!)) = -
 opmap(::typeof(com!)) = ~
+opmap(::typeof(lshift!)) = <<
 
 @testset "operations" begin
     function test(op, x, y)
@@ -471,13 +472,13 @@ opmap(::typeof(com!)) = ~
 end
 
 @testset "bit and unary ops, etc." begin
-    xs = BigInt[0, 1, 2, 3, rand(UInt8, 5)..., rand(UInt, 5)..., rand(SLimb, 5)...,
+    xs = BigInt[0, 1, 2, 3, rand(UInt8, 5)..., rand(UInt, 5)..., rand(SLimb, 10)...,
                 typemax(UInt), typemax(UInt)-1, typemax(UInt)-2,
-                typemax(SLimb), typemax(SLimb)-1, typemax(SLimb)-2]
+                typemax(SLimb), typemax(SLimb)-1, typemax(SLimb)-2, typemax(SLimb)-3]
     append!(xs, rand(big(2)^65:big(2)^100, 5))
     append!(xs, rand(big(0):big(2)^200, 5))
     append!(xs, (-).(xs))
-    push!(xs, typemin(SLimb), typemin(SLimb)+1, big(typemin(SLimb))-1)
+    push!(xs, typemin(SLimb), typemin(SLimb)+1, typemin(SLimb) >> 1, big(typemin(SLimb))-1)
 
     @testset "$op(::XInt)" for op = (-, ~, isqrt, trailing_zeros, trailing_ones, count_ones,
                                      abs, factorial, com!)
@@ -504,13 +505,16 @@ end
 
     cs = [0, 1, 2, 3, 4, rand(5:typemax(Int8), 20)...]
     cs2 = [cs; (-).(cs)]
-    @testset "$op(::XInt, c)" for op = (<<, >>, >>>, (^))
+    @testset "$op(::XInt, c)" for op = (<<, >>, >>>, (^), lshift!)
         for x = xs, T = [Base.BitInteger_types..., BigInt, Bool, XInt]
-            for c = (T <: Signed && op !== (^) ? cs2 : T === Bool ? [true, false] : cs)
-                s = op(x, T(c))
+            for c = (T <: Signed && op !== (^) ? cs2 :
+                     T === Bool ?                [true, false] :
+                                                 cs)
+                s = opmap(op)(x, T(c))
+                @assert !(x isa XInt) # for mutation
                 r = op(vint(x), T(c))
                 @test s == r
-                @test validate(r) isa XInt
+                validate(r)
             end
         end
     end

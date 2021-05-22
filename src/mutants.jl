@@ -188,3 +188,83 @@ com!(r::XIntV, x::XInt=r) =
     else
          neg!(add1!(r, x, one(SLimb)))
     end
+
+lshift!(x::XInt, c::Integer) = lshift!(x, x, c)
+
+# from base/operators.jl
+@inline function lshift!(r::XIntV, x::XInt, c::Integer)
+    typemin(Cint) <= c <= typemax(Cint) && return lshift!(r, x, c % Cint)
+    (x >= 0 || c >= 0) && return zero(XInt)
+    XInt(-1)
+end
+
+@inline lshift!(r::XIntV, x::XInt, c::Unsigned) =
+    c <= typemax(Cuint) ? lshift!(r, x, c % Cuint) : zero(XInt)
+
+@inline lshift!(r::XIntV, x::XInt, c::Cint) =
+    c >= 0 ? lshift!(r, x, unsigned(c)) : x >> unsigned(-c) # TODO: update with rshift!
+
+@inline function lshift!(r::XIntV, x::XInt, c::Cuint)
+    z = x.x
+    iszero(z) && return x # NOTE: needs updating if a reduce argument is added
+    if is_short(x)
+        iszero(c) && return x
+        if z > 0
+            leading_zeros(z) > c &&
+                return _XInt(z << c)
+        else
+            if leading_ones(z) > c
+                s = z << c
+                s !== slimbmin &&
+                    return _XInt(z << c)
+                # NOTE: it seems to be almost 2x faster for the general case to not
+                # return the (known) result here for s==slimbmin, but rather to let
+                # this special case be handled by lshift_small!
+            end
+        end
+        lshift_small!(r, z, c)
+    else
+        lshift_big!(r, x, c)
+    end
+end
+
+@noinline function lshift_small!(r::XIntV, z::SLimb, c::Cuint)
+    zu = abs(z) % Limb
+    offset = _divLimb(c) % SLimb
+    cnt = _modLimb(c) % SLimb
+    rl = 1+offset
+    if iszero(cnt)
+        rv = vec!(r, rl)
+        @inbounds rv[rl] = zu
+    else
+        rv = vec!(r, rl+1)
+        w = widen(zu) << cnt
+        @inbounds rv[rl] = w % Limb
+        high = @inbounds rv[rl+1] = (w >> BITS_PER_LIMB) % Limb
+        rl += !iszero(high)
+    end
+    fill!(@view(rv[1:offset]), Limb(0))
+    _XInt(flipsign(rl, z), rv)
+end
+
+@noinline function lshift_big!(r::XIntV, x::XInt, c::Cuint)
+    r === x && c == 0 && return x
+    xl = len(x)
+    xv = vec(x)
+    offset = _divLimb(c) % SLimb
+    cnt = _modLimb(c) % SLimb
+    rl = xl+offset
+    if iszero(cnt)
+        rv = vec!(r, rl)
+        # TODO: when r===x and rv requires allocation anyway in vec! above,
+        # maybe it would be more efficient to prepend! zeros ?
+        unsafe_copyto!(rv, offset+1, xv, 1, xl)
+    else
+        rv = vec!(r, rl+1)
+        high = MPN.lshift(@view(rv[offset+1:rl]), xv=>xl, cnt)
+        @inbounds rv[rl+1] = high
+        rl += !iszero(high)
+    end
+    fill!(@view(rv[1:offset]), Limb(0))
+    _XInt(flipsign(rl, x.x), rv)
+end

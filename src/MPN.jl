@@ -8,8 +8,8 @@ const Size = Clong # mp_size_t
 len(p::Pair) = p[2]
 ptr(p::Pair) = ptr(p[1])
 ptr(p::Ptr) = p
-len(p::Array) = length(p)
-ptr(p::Array) = pointer(p)
+len(p::AbstractArray) = length(p)
+ptr(p::AbstractArray) = pointer(p) # Vector and views thereof
 
 len(b::BigInt) = abs(b.size)
 ptr(b::BigInt) = b.d
@@ -37,5 +37,9 @@ sub_n(rp, s1, s2, n) = @preserve rp s1 s2 ccall((:__gmpn_sub_n, :libgmp), Limb,
 cmp(s1, s2, n=len(s1)) = @preserve s1 s2 ccall((:__gmpn_cmp, :libgmp), Cint,
                                                (Ptr{Limb}, Ptr{Limb}, Clong),
                                                ptr(s1), ptr(s2), n)
+
+lshift(rp, s1, c) = @preserve rp s1 ccall((:__gmpn_lshift, :libgmp), Limb,
+                                          (PLimb, PLimb, Size, Cuint),
+                                          ptr(rp), ptr(s1), len(s1), c)
 
 end # MPN

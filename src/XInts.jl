@@ -42,10 +42,16 @@ if BITS_PER_LIMB == 32
     const SLimb = Int32
     const SLimbW = Int64
     const LimbW = UInt64
+
+    @inline _divLimb(n) = n >>> 5
+    @inline _modLimb(n) = n & 31
 elseif BITS_PER_LIMB == 64
     const SLimb = Int64
     const SLimbW = Int128
     const LimbW = UInt128
+
+    @inline _divLimb(n) = n >>> 6
+    @inline _modLimb(n) = n & 63
 else
     error()
 end
@@ -60,7 +66,7 @@ struct XInt <: Signed
     x::SLimb # immediate integer or sign+length
     v::Union{Nothing,Vector{Limb}}
 
-    XInt(x::SLimb) =
+    @inline XInt(x::SLimb) =
         x === typemin(SLimb) ?
             new(-one(SLimb), [limb1min]) :
             new(x, nothing)
@@ -108,6 +114,7 @@ include("mutants.jl")
 
 MPN.ptr(x::XInt) = pointer(x.v::Vector{Limb})
 MPN.len(x::XInt) = abs(x.x) % MPN.Size
+len(x::XInt) = abs(x.x)
 
 function XInt(z::BigInt)
     len = abs(z.size)
@@ -398,7 +405,7 @@ invmod(x::XInt, y::XInt) =
 (-)(x::XInt) = _XInt(-x.x, _copy(x.v))
 (~)(x::XInt) = com!(nothing, x)
 
-<<(x::XInt, c::UInt) = c == 0 ? x : @bigint z x XInt(MPZ.mul_2exp!(z, x, c))
+<<(x::XInt, c::UInt) = lshift!(nothing, x, c)
 >>(x::XInt, c::UInt) = c == 0 ? x : is_short(x) ? XInt(x.x >> c) :
                                     @bigint z x XInt(MPZ.fdiv_q_2exp!(z, x, c))
 >>>(x::XInt, c::UInt) = x >> c
@@ -638,9 +645,6 @@ if Limb === UInt
         end
         h
     end
-
-    _divLimb(n) = UInt === UInt64 ? n >>> 6 : n >>> 5
-    _modLimb(n) = UInt === UInt64 ? n & 63 : n & 31
 
     function hash(x::XInt, h::UInt)
         GC.@preserve x begin
