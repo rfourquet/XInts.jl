@@ -406,8 +406,7 @@ invmod(x::XInt, y::XInt) =
 (~)(x::XInt) = com!(nothing, x)
 
 <<(x::XInt, c::UInt) = lshift!(nothing, x, c)
->>(x::XInt, c::UInt) = c == 0 ? x : is_short(x) ? XInt(x.x >> c) :
-                                    @bigint z x XInt(MPZ.fdiv_q_2exp!(z, x, c))
+>>(x::XInt, c::UInt) = rshift!(nothing, x, c)
 >>>(x::XInt, c::UInt) = x >> c
 
 trailing_zeros(x::XInt) =

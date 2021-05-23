@@ -1,6 +1,6 @@
 using XInts
 using XInts: SLimb, slimbmin, slimbmax, Limb, ClongMax, CulongMax, CdoubleMax, BITS_PER_LIMB,
-             add!, sub!, com!, lshift!, SLimbW
+             add!, sub!, com!, lshift!, rshift!, SLimbW, vec, is_short
 using BitIntegers
 import Random
 
@@ -325,6 +325,7 @@ opmap(::typeof(add!)) = +
 opmap(::typeof(sub!)) = -
 opmap(::typeof(com!)) = ~
 opmap(::typeof(lshift!)) = <<
+opmap(::typeof(rshift!)) = >>
 
 @testset "operations" begin
     function test(op, x, y)
@@ -472,13 +473,15 @@ opmap(::typeof(lshift!)) = <<
 end
 
 @testset "bit and unary ops, etc." begin
-    xs = BigInt[0, 1, 2, 3, rand(UInt8, 5)..., rand(UInt, 5)..., rand(SLimb, 10)...,
+    xs = BigInt[1, 2, 3, rand(UInt8, 5)..., rand(UInt, 5)..., rand(SLimb, 10)...,
                 typemax(UInt), typemax(UInt)-1, typemax(UInt)-2,
-                typemax(SLimb), typemax(SLimb)-1, typemax(SLimb)-2, typemax(SLimb)-3]
+                typemax(SLimb), typemax(SLimb)-1, typemax(SLimb)-2, typemax(SLimb)-3,
+                big(2)^192-1] # specifically for rshift!
+
     append!(xs, rand(big(2)^65:big(2)^100, 5))
     append!(xs, rand(big(0):big(2)^200, 5))
     append!(xs, (-).(xs))
-    push!(xs, typemin(SLimb), typemin(SLimb)+1, typemin(SLimb) >> 1, big(typemin(SLimb))-1)
+    push!(xs, 0, typemin(SLimb), typemin(SLimb) >> 1, big(typemin(SLimb))-1)
 
     @testset "$op(::XInt)" for op = (-, ~, isqrt, trailing_zeros, trailing_ones, count_ones,
                                      abs, factorial, com!)
@@ -503,18 +506,32 @@ end
         end
     end
 
-    cs = [0, 1, 2, 3, 4, rand(5:typemax(Int8), 20)...]
+    cs = [0, 1, 2, 3, 4, BITS_PER_LIMB, 2*BITS_PER_LIMB, rand(5:4*BITS_PER_LIMB, 20)...]
     cs2 = [cs; (-).(cs)]
-    @testset "$op(::XInt, c)" for op = (<<, >>, >>>, (^), lshift!)
-        for x = xs, T = [Base.BitInteger_types..., BigInt, Bool, XInt]
+    @testset "$op(::XInt, c)" for op = (<<, >>, >>>, (^), lshift!, rshift!)
+        for T = [Base.BitInteger_types..., BigInt, Bool, XInt]
             for c = (T <: Signed && op !== (^) ? cs2 :
                      T === Bool ?                [true, false] :
                                                  cs)
-                s = opmap(op)(x, T(c))
-                @assert !(x isa XInt) # for mutation
-                r = op(vint(x), T(c))
-                @test s == r
-                validate(r)
+                !Base.hastypemax(T) || typemin(T) <= c <= typemax(T) || continue
+                for x = xs
+                    s = opmap(op)(x, T(c))
+                    @assert !(x isa XInt) # for mutation
+                    r = op(vint(x), T(c))
+                    @test s == r
+                    validate(r)
+                    if opmap(op) != op
+                        # mutating
+                        tmp = XInts._XInt(0, Limb[])
+                        rtmp = validate(op(tmp, vint(x), T(c)))
+                        @test rtmp == r
+                        if !is_short(r)
+                            @test vec(rtmp) === vec(tmp)
+                        end
+                        tmp = XInts._XInt(0)
+                        @test validate(op(tmp, vint(x), T(c))) == r
+                    end
+                end
             end
         end
     end

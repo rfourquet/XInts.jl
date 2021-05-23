@@ -17,6 +17,26 @@ vec!(x::XInt, n::Integer) =
 
 vec!(::Nothing, n::Integer) = _vec(n)
 
+_copy!(r::Nothing, x::XInt) = x
+
+# assumes !is_short(x)
+_copy!(r::XInt, x::XInt) =
+    if r === x
+        x
+    else
+        xv = vec(x)
+        xl = len(x)
+        _XInt(x.x, unsafe_copyto!(vec!(r, length(xv)), 1, xv, 1, xl))
+    end
+
+@inline function assign!(r::XIntV, vals::T...) where T
+    v = vec!(r, length(vals))
+    for i = eachindex(vals)
+        @inbounds v[i] = vals[i] % Limb
+    end
+    v
+end
+
 @inline XInt!(r::XIntV, z::SLimbW, reduce::Bool=true) =
     if slimbmin < z <= slimbmax
         zs = z % SLimb
@@ -202,7 +222,7 @@ end
     c <= typemax(Cuint) ? lshift!(r, x, c % Cuint) : zero(XInt)
 
 @inline lshift!(r::XIntV, x::XInt, c::Cint) =
-    c >= 0 ? lshift!(r, x, unsigned(c)) : x >> unsigned(-c) # TODO: update with rshift!
+    c >= 0 ? lshift!(r, x, unsigned(c)) : rshift!(r, x, unsigned(-c))
 
 @inline function lshift!(r::XIntV, x::XInt, c::Cuint)
     z = x.x
@@ -267,4 +287,94 @@ end
     end
     fill!(@view(rv[1:offset]), Limb(0))
     _XInt(flipsign(rl, x.x), rv)
+end
+
+rshift!(x::XInt, c::Integer) = rshift!(x, x, c)
+
+# from base/operators.jl
+@inline function rshift!(r::XIntV, x::XInt, c::Integer)
+    typemin(Cint) <= c <= typemax(Cint) && return rshift!(r, x, c % Cint)
+    (x >= 0 || c < 0) && return zero(XInt)
+    XInt(-1)
+end
+
+@inline rshift!(r::XIntV, x::XInt, c::Cint) =
+    c >= 0 ? rshift!(r, x, unsigned(c)) : lshift!(r, x, unsigned(-c))
+
+@inline function rshift!(r::XIntV, x::XInt, c::Cuint)
+    z = x.x
+    is_short(x) && return _XInt(z >> c)
+    (iszero(z) || iszero(c)) && return _copy!(r, x)
+    rshift_big!(r, x, c)
+end
+
+# For non-negative integers, right-shift is as obvious as it gets.
+# For negative numbers, we use as usual the formula ~y = -(y+1) to emulate 2-complement
+# integers; assuming x < 0 and c > 0, letting u = -x and v = u - 1 >= 0, we have
+# x == -(v + 1) == ~v, from which we infer
+# x >> c == ~v >> c == ~(v >> c) == -(v >> c + 1)
+# Now, we don't want to compute v >> c, only u >> c. There are two cases:
+# 1. u is a multiple of 2^c, i.e. u = k*2^c and u >> c == k
+#    then v == u-1 == (k-1)*2^c + (2^c-1), therefore v >> c == k-1
+#    hence: x >> c == -(k-1 + 1) == -k == -(u >> c) == -(-x >> c)
+# 2. otherwise, u = k*2^c + r where 1 <= r < 2^c
+#    then v == u-1 == k*2^c + r-1 where 0 <= r-1 < 2^c, therefore v >> c == u >> c
+#    hence: x >> c == -(-x >> c + 1)
+# Also, this can be derived more direcly from x >> c == fld(x, 2^c) where x = -k*2^c - r
+@noinline function rshift_big!(r::XIntV, x::XInt, c::Cuint)
+    xl = len(x)
+    xv = vec(x)
+    offset = _divLimb(c) % SLimb
+    cnt = _modLimb(c) % SLimb
+    rl = xl-offset
+    neg = signbit(x.x)
+    rl <= 0 && return XInt(-neg)
+
+    rest = false # records whether there is any set bit among the first c in -x (when x < 0)
+    if neg
+        rest = any(!=(zero(Limb)), @view(xv[1:offset]))
+    end
+
+    if  rl <= 2 # special case, to avoid allocating for nothing
+        xvend = @inbounds xv[xl] % LimbW
+        if rl == 2
+            xvend = xvend << BITS_PER_LIMB | @inbounds xv[xl-1] % LimbW
+        end
+        u = xvend >> cnt
+        if neg & !rest
+            rest |= trailing_zeros(xvend) < cnt
+        end
+        if rest && u == typemax(LimbW)
+            # happens e.g. with x = -(XInt(2)^192-1) and c == 64 (with sizeof(Limb) == 8)
+            _XInt(SLimb(-3), assign!(r, 0, 0, 1))
+        else
+            u += rest
+            if u <= slimbmax
+                _XInt(flipsign(u % SLimb, x.x))
+            elseif u <= typemax(Limb)
+                _XInt(flipsign(one(SLimb), x.x),
+                      assign!(r, u % Limb))
+            else
+                _XInt(flipsign(SLimb(2), x.x),
+                      assign!(r, u % Limb , (u >> BITS_PER_LIMB) % Limb))
+            end
+        end
+    else
+        rv = vec!(r, rl + neg)
+        if iszero(cnt)
+            unsafe_copyto!(rv, 1, xv, offset+1, rl)
+        else
+            discarded = MPN.rshift(rv=>rl, @view(xv[offset+1:xl]), cnt)
+            if neg
+                rest |= !iszero(discarded)
+            end
+            rl -= iszero(@inbounds rv[rl])
+        end
+        if rest
+            d = MPN.add_1(rv, rv=>rl, Limb(1))
+            @inbounds rv[rl+1] = d
+            rl += !iszero(d)
+        end
+        _XInt(flipsign(rl, x.x), rv)
+    end
 end
