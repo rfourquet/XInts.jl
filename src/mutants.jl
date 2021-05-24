@@ -1,7 +1,9 @@
 const XIntV = Union{XInt, Nothing}
 
 _vec(n::Integer) = Vector{Limb}(undef, n)
-vec(x::XInt) = x.v::Vector{Limb}
+@inline vec(x::XInt) = x.v::Vector{Limb}
+
+lenvec(x::XInt) = len(x), vec(x)
 
 vec!(x::XInt, n::Integer) =
     if is_short(x)
@@ -17,17 +19,27 @@ vec!(x::XInt, n::Integer) =
 
 vec!(::Nothing, n::Integer) = _vec(n)
 
-_copy!(r::Nothing, x::XInt) = x
+# copy only when an output parameter is provided for in-place operations
+_maybe_copy!(r::Nothing, x::XInt) = x
+_maybe_copy!(r::XInt, x::XInt) = _copy!(r, x)
 
+# copy x into r, allocating for r when r===nothing
 # assumes !is_short(x)
-_copy!(r::XInt, x::XInt) =
+_copy!(r::XIntV, x::XInt) =
     if r === x
         x
     else
-        xv = vec(x)
         xl = len(x)
-        _XInt(x.x, unsafe_copyto!(vec!(r, length(xv)), 1, xv, 1, xl))
+        _XInt(x.x, _copy!(vec!(r, xl), x, 1, xl))
     end
+
+function _copy!(r::Vector, x::XInt, idx, n=len(x)-idx+1)
+    xv = vec(x)
+    if r !== xv
+        unsafe_copyto!(r, idx, xv, idx, n)
+    end
+    r
+end
 
 @inline function assign!(r::XIntV, vals::T...) where T
     v = vec!(r, length(vals))
@@ -36,6 +48,10 @@ _copy!(r::XInt, x::XInt) =
     end
     v
 end
+
+@inline XInt!(r::XIntV, z::Limby) =
+    fits(z) ? _XInt(z % SLimb) :
+              _XInt(flipsign(one(SLimb), z), assign!(r, z))
 
 @inline XInt!(r::XIntV, z::SLimbW, reduce::Bool=true) =
     if slimbmin < z <= slimbmax
@@ -304,7 +320,7 @@ end
 @inline function rshift!(r::XIntV, x::XInt, c::Cuint)
     z = x.x
     is_short(x) && return _XInt(z >> c)
-    (iszero(z) || iszero(c)) && return _copy!(r, x)
+    (iszero(z) || iszero(c)) && return _maybe_copy!(r, x)
     rshift_big!(r, x, c)
 end
 
@@ -376,5 +392,226 @@ end
             rl += !iszero(d)
         end
         _XInt(flipsign(rl, x.x), rv)
+    end
+end
+
+@inline and!(x::XInt, y::XInt) = and!(x, x, y)
+
+@inline function and!(r::XIntV, x::XInt, y::XInt)
+    if is_short(x, y)
+        XInt!(r, x.x & y.x)
+    elseif iszero(x) || iszero(y)
+        XInt(0)
+    elseif is_short(x)
+        and_small!(r, y, x)
+    elseif is_short(y)
+        and_small!(r, x, y)
+    else
+        and_big!(r, x, y)
+    end
+end
+
+@noinline function and_small!(r::XIntV, x::XInt, y::XInt)
+    # @assert !iszero(x) && !iszero(y) && !is_short(x) && is_short(y)
+    # y is small
+    xl, xv = lenvec(x)
+    yy = y.x % Limb
+    x1 = @inbounds xv[1]
+    if ispos(x)
+        if ispos(y)
+            u = x1 & yy
+            XInt!(r, u)
+        else # x > 0, y < 0
+            u = x1 & yy
+            res = _copy!(r, x)
+            rv = vec(res)
+            @inbounds rv[1] = u
+            # @assert_reduced x # if x is not reduced, the result could be immediate
+            res
+        end
+    elseif ispos(y) # x < 0
+        # x & y = ~(-x - 1) & y
+        _XInt((~(x1-1) & yy) % SLimb)
+    else # x < 0, y < 0
+        # let u = -x: -u & y = ~(u-1) & y = ~(u-1 | ~y) = -(u-1 | ~y) - 1
+        # y is sign-extended to all the upper-limbs, and upper-bit of its first limb is 1
+        # if x is one limb, the upper-bit of its first limb is also 1, so in any
+        # case, the result can't be an immediate integer
+
+        if iszero(x1)
+            # if x1 == 0, we see that a 2-complement representation of x would also
+            # have a null first limb, so x & y == x
+            _maybe_copy!(r, x)
+        else
+            # x1 > 0, so x-1 differs from x only in the 1st limb
+            r1 = (x1-1) | ~y
+            if r1 == typemax(Limb)
+                # +1 overflows, so we need to allocate one more limb, just in case
+                rv = vec!(r, xl+1)
+                @inbounds rv[1] = zero(Limb)
+                carry = true
+                @inbounds for i=2:xl
+                    u = xv[i]
+                    if carry && u == typemax(Limb)
+                        rv[i] = zero(Limb)
+                    else
+                        rv[i] = u+carry
+                        carry = false
+                    end
+                end
+                @inbounds rv[xl+1] = carry
+                rl = xl + carry
+                _XInt(-rl, rv)
+            else
+                rv = vec!(r, xl)
+                _copy!(rv, x, 2)
+                @inbounds rv[1] = r1+1
+                _XInt(x.x, rv)
+            end
+        end
+    end
+end
+
+@noinline function and_big!(r::XIntV, x::XInt, y::XInt)
+    # @assert !iszero(x) && !iszero(y) && !is_short(x) && !is_short(y)
+    if ispos(x)
+        if ispos(y)
+            xl, xv = lenvec(x)
+            yl, yv = lenvec(y)
+            if xl < yl
+                xv, yv = yv, xv
+                xl, yl = yl, xl
+            end
+            rl = yl
+            local rvl # stores the last limb in r
+            @inbounds while rl > 0
+                rvl = xv[rl] & yv[rl]
+                iszero(rvl) || break
+                rl -= 1
+            end
+            if rl <= 1
+                XInt!(r, rvl)
+            else
+                rv = vec!(r, rl)
+                # MPN.and_n(rv, xv, yv, rl)
+                for idx = 1:rl
+                    # we already computed the value of the last iteration, but
+                    # it seems no more expensive to just recompute it in this loop
+                    @inbounds rv[idx] = xv[idx] & yv[idx]
+                end
+                _XInt(rl, rv)
+            end
+        else # x > 0, y < 0
+            x, y = y, x
+            @goto mixed
+        end
+    elseif ispos(y) # x < 0
+        @label mixed
+        # result is positive
+        # x & y = ~(-x - 1) & y
+        xl, xv = lenvec(x)
+        yl, yv = lenvec(y)
+        if yl <= xl
+            # we don't know the resulting rl in advance; on the high limbs of -x,
+            # we don't know yet the effect of `-1`. So we first scan from the low
+            # end: as long as x's limbs are 0, they become 0xF...F after `-1`, and
+            # 0 after `~`, so r's corresponding limbs are 0.
+            i = 1
+            local xi
+            while i <= yl
+                xi = @inbounds xv[i]
+                iszero(xi) || break
+                i += 1
+            end
+            if yl < i
+                _XInt(0)
+            else
+                rl = yl
+                local rvl
+                # we scan from the high end to compute rl: above i, the `-1` had no effect,
+                # and we search for the hightest non-zero limb in r
+                while rl > i
+                    rvl = @inbounds ~xv[rl] & yv[rl]
+                    iszero(rvl) || break
+                    rl -= 1
+                end
+                if rl == i
+                    # all the limbs of r above and below i are 0
+                    rvl = @inbounds ~(xi-1) & yv[i]
+                    if iszero(rvl)
+                        rl = 0
+                    end
+                end
+                if rl <= 1
+                    XInt!(r, rvl)
+                else
+                    rv = vec!(r, rl)
+                    for j = 1:i-1
+                        @inbounds rv[j] = zero(Limb)
+                    end
+                    if i < rl
+                        @inbounds rv[i] = ~(xv[i]-1) & yv[i] # rvl if i == rl
+                        for j = i+1:rl-1
+                            @inbounds rv[j] = ~xv[j] & yv[j]
+                        end
+                    end
+                    @inbounds rv[rl] = rvl
+                    _XInt(rl, rv)
+                end
+            end
+        else # yl > xl
+            # no need to scan, we know that rl == yl
+            rv = vec!(r, yl)
+            xok = false
+            @inbounds for i = 1:xl
+                xi = xv[i]
+                yi = yv[i]
+                if xok
+                    rv[i] = ~xi & yi
+                else
+                    xok = !iszero(xi)
+                    rv[i] = ~(xi-1) & yi
+                end
+            end
+            for i = xl+1:yl
+                @inbounds rv[i] = yv[i]
+            end
+            _XInt(yl, rv)
+        end
+    else # x < 0, y < 0
+        # result is negative
+        # -u & -v = ~(u-1) & ~(v-1) = ~(u-1 | v-1) = -(u-1 | v-1) - 1
+        xl, xv = lenvec(x)
+        yl, yv = lenvec(y)
+        if xl < yl
+            xv, yv = yv, xv
+            xl, yl = yl, xl
+        end
+        rl = xl
+        rv = vec!(r, rl+1)
+        xok, yok, oneok = false, false, false
+        for i=1:xl
+            xi = @inbounds xv[i]
+            yi = i <= yl ? @inbounds(yv[i]) : zero(Limb)
+            if !xok
+                xok = !iszero(xi) # carry won't propagate anymore
+                xi -= 1
+            end
+            if !yok
+                yok = !iszero(yi)
+                yi -= 1
+            end
+            u = xi | yi
+            if !oneok
+                oneok = u != typemax(Limb)
+                u += 1
+            end
+            @inbounds rv[i] = u
+        end
+        if !oneok
+            rl += 1
+            @inbounds rv[rl] = one(Limb)
+        end
+        _XInt(-rl, rv)
     end
 end

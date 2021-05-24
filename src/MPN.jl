@@ -46,4 +46,9 @@ rshift(rp, s1, c) = @preserve rp s1 ccall((:__gmpn_rshift, :libgmp), Limb,
                                           (PLimb, PLimb, Size, Cuint),
                                           ptr(rp), ptr(s1), len(s1), c)
 
+and_n(rp, s1, s2, n=len(s1)) = @preserve rp s1 s2 ccall((:__gmpn_and_n, :libgmp), Cvoid,
+                                                        (PLimb, PLimb, PLimb, Size),
+                                                        ptr(rp), ptr(s1), ptr(s2), n)
+
+
 end # MPN

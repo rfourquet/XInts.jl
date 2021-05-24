@@ -1,6 +1,6 @@
 using XInts
 using XInts: SLimb, slimbmin, slimbmax, Limb, ClongMax, CulongMax, CdoubleMax, BITS_PER_LIMB,
-             add!, sub!, com!, lshift!, rshift!, SLimbW, vec, is_short
+             add!, sub!, com!, lshift!, rshift!, and!, SLimbW, LimbW, vec, is_short
 using BitIntegers
 import Random
 
@@ -326,61 +326,87 @@ opmap(::typeof(sub!)) = -
 opmap(::typeof(com!)) = ~
 opmap(::typeof(lshift!)) = <<
 opmap(::typeof(rshift!)) = >>
+opmap(::typeof(and!)) = &
 
-@testset "operations" begin
-    function test(op, x, y)
-        for a = (-x, x), b = (-y, y)
-            s = if op === invmod
-                    try
-                        op(big(a), big(b))
-                    catch
-                        @test_throws DomainError op(XInt(a), XInt(b))
-                        continue
-                    end
-                else
-                    opmap(op)(big(a), big(b))
-                end
-            @assert !(a isa XInt) # so that if op is mutating, it doesn't mutate a
-            r = op(vint(a), vint(b))
-            if op === divrem
-                @test r isa Tuple{XInt,XInt}
-                validate.(r)
-            elseif op === gcdx
-                @test r isa Tuple{XInt,XInt,XInt}
-                validate.(r)
-            elseif !(s isa BigInt)
-                @test typeof(s) == typeof(r)
-            else
-                validate(r)
+function testop2(op, x, y)
+    for a = (-x, x), b = (-y, y)
+        s = if op === invmod
+            try
+                op(big(a), big(b))
+            catch
+                @test_throws DomainError op(XInt(a), XInt(b))
+                continue
             end
-            @test s == r
-            if op === div
-                for R = (RoundToZero, RoundDown, RoundUp)
-                    @test div(big(a), big(b), R) ==
-                        validate(div(XInt(a), XInt(b), R)) isa XInt
-                end
+        else
+            opmap(op)(big(a), big(b))
+        end
+        @assert !(a isa XInt) # so that if op is mutating, it doesn't mutate a
+        r = op(vint(a), vint(b))
+        if op === divrem
+            @test r isa Tuple{XInt,XInt}
+            validate.(r)
+        elseif op === gcdx
+            @test r isa Tuple{XInt,XInt,XInt}
+            validate.(r)
+        elseif !(s isa BigInt)
+            @test typeof(s) == typeof(r)
+        else
+            validate(r)
+        end
+        @test s == r
+        if op === div
+            for R = (RoundToZero, RoundDown, RoundUp)
+                @test div(big(a), big(b), R) ==
+                    validate(div(XInt(a), XInt(b), R)) isa XInt
             end
         end
+        if opmap(op) != op
+            # mutating
+            tmp = XInts._XInt(0, Limb[])
+            rtmp = validate(op(tmp, vint(a), vint(b)))
+            @test rtmp == r
+            if !is_short(r)
+                @test vec(rtmp) === vec(tmp)
+            end
+            tmp = XInts._XInt(0)
+            @test validate(op(tmp, vint(a), vint(b))) == r
+        end
     end
+end
+
+@testset "operations" begin
+
+    xs = BigInt[0, 1, 2, rand(0:1000, 5)..., slimbmax, slimbmax-1, slimbmax-2,
+                rand(SLimb, 5)..., rand(Limb, 5)...,
+                Int128(slimbmax)+1, Int128(slimbmax)+2,
+                (LimbW.(rand(Limb, 3)) .<< BITS_PER_LIMB)...,
+                typemax(LimbW), LimbW(typemax(Limb)) << BITS_PER_LIMB, # and!
+                (LimbW(typemax(Limb)) << BITS_PER_LIMB) + 1, # and!
+                (Int128(slimbmax).+rand(UInt8, 5))...,
+                rand(Int128(2)^65:Int128(2)^100, 2)..., rand(big(0):big(2)^200, 2)...,
+                slimbmin] # TODO: slimbmin and 0 are used twice when negated in test(...)
+
     @testset "$op(::XInt, ::XInt)" for op = (+, -, *, mod, rem, gcd, gcdx, lcm, &, |, xor,
                                              /, div, divrem, fld, cld, invmod,
                                              cmp, <, <=, >, >=, ==, flipsign, binomial,
-                                             add!, sub!)
-        xs = Any[0, 1, 2, rand(0:1000, 10)..., slimbmax, slimbmax-1, slimbmax-2,
-                 Int128(slimbmax)+1, Int128(slimbmax)+2,
-                 (Int128(slimbmax).+rand(UInt8, 5))...,
-                 rand(Int128(2)^65:Int128(2)^100, 2)..., rand(big(0):big(2)^200, 2)...,
-                 slimbmin] # TODO: slimbmin and 0 are used twice when negated in test(...)
+                                             add!, sub!, and!)
         for x=xs, y=xs
             iszero(y) && op ∈ (/, mod, rem, div, divrem, fld, cld, invmod) &&
                 continue
             op === binomial && !all(0 .<= [x, y] .<= 1000) && continue
-            test(op, x, y)
+            testop2(op, x, y)
         end
         if op === +
             x = XInt(2)^128
             y = validate(-x+1)
             @test validate(x+y) == big(x) + big(y)
+        end
+        if op === &
+            # special case where the result takes one more limb than the operands
+            x = -XInt(XInt(typemax(UInt))<<64 + 1)
+            y = -XInt(2)^64
+            z = validate(x & y)
+            @test z == big(x) & big(y)
         end
     end
 

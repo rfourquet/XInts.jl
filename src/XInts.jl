@@ -62,6 +62,8 @@ const slimbmax = typemax(SLimb)
 # reciprocally, a direct integer must have its absolute value < limb1min
 const limb1min = slimbmin % Limb # typically 0x8000000000000000
 
+const Limby = Union{Limb,SLimb}
+
 struct XInt <: Signed
     x::SLimb # immediate integer or sign+length
     v::Union{Nothing,Vector{Limb}}
@@ -130,8 +132,9 @@ function XInt(z::BigInt)
 end
 
 fits(z::Limb) = !Core.is_top_bit_set(z) # z < limb1min
-XInt(z::Limb) = fits(z) ? _XInt(z % SLimb) :
-                          _XInt(one(SLimb), Limb[z])
+fits(z::SLimb) = z !== slimbmin
+
+XInt(z::Limb) = XInt!(nothing, z)
 
 # only SLimb and Limb in this Union need to be validated, but are taken care of by
 # other more specific constructors
@@ -273,6 +276,7 @@ function (::Type{T})(x::XInt) where T<:Base.BitUnsigned
 end
 
 ispos(x::XInt) = x.x > 0
+ispos(x::XInt, y::XInt) = x.x > 0 && y.x > 0
 isneg(x::XInt) = x.x < 0
 signbit(x::XInt) = x.x < 0
 sign(x::XInt) = XInt(sign(x.x))
@@ -330,7 +334,7 @@ float(::Type{XInt}) = BigFloat
 for (fJ, fC) in ((:*, :mul),
                  (:mod, :fdiv_r), (:rem, :tdiv_r),
                  (:gcd, :gcd), (:lcm, :lcm),
-                 (:&, :and), (:|, :ior), (:xor, :xor))
+                 (:|, :ior), (:xor, :xor))
     fC! = Symbol(fC, :!)
     @eval begin
         ($fJ)(x::XInt, y::XInt) =
@@ -343,6 +347,7 @@ end
 
 +(x::XInt, y::XInt) = add!(nothing, x, y)
 -(x::XInt, y::XInt) = sub!(nothing, x, y)
+(&)(x::XInt, y::XInt) = and!(nothing, x, y)
 
 sum(arr::AbstractArray{XInt}) = _XInt(
     foldl(arr; init=XInt(0)) do x, y
