@@ -108,6 +108,8 @@ _XInt(x::XInt) =
         _XInt(x.x, vec(x), true)
     end
 
+_XInt(u::Limb) = _XInt(u % SLimb) # no check done that u fits
+
 is_short(x::XInt) = x.v === nothing
 is_short(x::XInt, y::XInt) = x.v === nothing === y.v
 
@@ -334,7 +336,7 @@ float(::Type{XInt}) = BigFloat
 for (fJ, fC) in ((:*, :mul),
                  (:mod, :fdiv_r), (:rem, :tdiv_r),
                  (:gcd, :gcd), (:lcm, :lcm),
-                 (:|, :ior), (:xor, :xor))
+                 (:xor, :xor))
     fC! = Symbol(fC, :!)
     @eval begin
         ($fJ)(x::XInt, y::XInt) =
@@ -348,6 +350,7 @@ end
 +(x::XInt, y::XInt) = add!(nothing, x, y)
 -(x::XInt, y::XInt) = sub!(nothing, x, y)
 (&)(x::XInt, y::XInt) = and!(nothing, x, y)
+(|)(x::XInt, y::XInt) = ior!(nothing, x, y)
 
 sum(arr::AbstractArray{XInt}) = _XInt(
     foldl(arr; init=XInt(0)) do x, y

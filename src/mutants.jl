@@ -53,6 +53,12 @@ end
     fits(z) ? _XInt(z % SLimb) :
               _XInt(flipsign(one(SLimb), z), assign!(r, z))
 
+# make a XInt into r, with value -z
+@inline XInt_neg!(r::XIntV, z::Limb) =
+    fits(z) ? _XInt(-z % SLimb) :
+              _XInt(-one(SLimb), assign!(r, z))
+
+
 @inline XInt!(r::XIntV, z::SLimbW, reduce::Bool=true) =
     if slimbmin < z <= slimbmax
         zs = z % SLimb
@@ -613,5 +619,229 @@ end
             @inbounds rv[rl] = one(Limb)
         end
         _XInt(-rl, rv)
+    end
+end
+
+## ior (|)
+
+@inline ior!(x::XInt, y::XInt) = ior!(x, x, y)
+
+@inline function ior!(r::XIntV, x::XInt, y::XInt)
+    xshort = is_short(x)
+    yshort = is_short(y)
+    if xshort & yshort
+        XInt!(r, x.x | y.x)
+    elseif iszero(x)
+        _maybe_copy!(r, y) # !yshort, as xshort
+    elseif iszero(y)
+        _maybe_copy!(r, x) # !xshort
+    elseif xshort
+        ior_small!(r, y, x)
+    elseif yshort
+        ior_small!(r, x, y)
+    else
+        ior_big!(r, x, y)
+    end
+end
+
+@noinline function ior_small!(r::XIntV, x::XInt, y::XInt)
+    # @assert !iszero(x) && !iszero(y) && !is_short(x) && is_short(y)
+    # y is small
+    xl, xv = lenvec(x)
+    yy = y.x % Limb
+    x1 = @inbounds xv[1]
+    if ispos(x)
+        if ispos(y)
+            res = _copy!(r, x)
+            rv = vec(res)
+            @inbounds rv[1] = x1 | yy
+            res
+        else # x > 0, y < 0
+            # y is short, so more than its sign bit is set, and x | y >= y (result is short)
+            _XInt(x1 | yy)
+        end
+    elseif ispos(y) # x < 0
+        # x | y = ~(-x - 1) | y = ~((-x - 1) & ~y) = -((-x - 1) & ~y) - 1
+        carry = iszero(x1)
+        r1 = (x1-1) & ~yy + 1
+        # a small analysis shows that, given y > 0, the `+1` can't carry over upper limbs
+
+        if xl == 1
+            # then !carry as -x > 0
+            XInt_neg!(r, r1)
+        else
+            rv = vec!(r, xl)
+            @inbounds rv[1] = r1
+            @inbounds for i=2:xl
+                xi = xv[i]
+                rv[i] = xi - carry
+                carry &= iszero(xi)
+            end
+            rl = xl - iszero(@inbounds rv[xl])
+            _XInt(-rl, rv)
+        end
+    else # x < 0, y < 0
+        # x | y = ~(-x-1) | y # similar to x > 0, y < 0
+        _XInt(~(x1-1) | yy)
+    end
+end
+
+@noinline function ior_big!(r::XIntV, x::XInt, y::XInt)
+    # @assert !iszero(x) && !iszero(y) && !is_short(x) && !is_short(y)
+    if ispos(x)
+        if ispos(y) # r > 0
+            xl, xv = lenvec(x)
+            yl, yv = lenvec(y)
+            if xl < yl
+                xv, yv = yv, xv
+                xl, yl = yl, xl
+            end
+            rv = vec!(r, xl)
+            for i=1:yl
+                @inbounds rv[i] = xv[i] | yv[i]
+            end
+            for i=yl+1:xl
+                @inbounds rv[i] = xv[i]
+            end
+            _XInt(xl, rv)
+        else # x > 0, y < 0 : r < 0
+            x, y = y, x
+            @goto mixed
+        end
+    elseif ispos(y) # x < 0 : r < 0
+        @label mixed
+        # x | y = ~(-x - 1) | y = ~((-x - 1) & ~y) = -((-x - 1) & ~y) - 1
+        xl, xv = lenvec(x)
+        yl, yv = lenvec(y)
+        if yl + 2 <= xl
+            # then -x-1 still has at least one more limb than y, which is not cancelled
+            # when &-ed with ~y; then rl could be xl, or xl-1 when xv[l] == 1 and
+            # xv[l-1] == 0
+            rv = vec!(r, xl)
+            cm = cp = true # carries for -1 and +1
+            @inbounds for i=1:yl
+                xi = xv[i]
+                yi = yv[i]
+                ri = (xi - cm) & ~yi + cp
+                cm &= iszero(xi)
+                cp &= iszero(ri) # note: !cp ==> !cm, i.e. cm can't last longer than cp
+                rv[i] = ri
+            end
+            # at this point, we know for sure that !cp
+            # bewond y's limbs, ~y is all ones, so we just write x limbs, carrying out cm
+            for i=yl+1:xl
+                xi = xv[i]
+                rv[i] = xi - cm
+                cm &= iszero(xi)
+            end
+            rl = xl - iszero(@inbounds rv[xl])
+            _XInt(-rl, rv)
+        else # yl >= xl - 1
+            # rl could be anything, e.g.  -(2^128) | (2^128-1) == -1
+            # so the idea is to scan from the end to find the highest non-zero limb
+            # but for this, we need to know where the carry from `-1` stops: this is the
+            # first non-zero position in xv, call it k; we therefore need to first scan
+            # from the beginning to find k, and then from the end with the
+            # formula xi & ~yi; if it happens that this is all zero beyond k, we would
+            # then need to scan again from the beginning to find rl, before allocating;
+            # this is a rare case, so we might not be concerned with having to scan
+            # twice from the beginning; but for simplicity, in the first scan from the
+            # beginning, we also record the highest non-zero ri upto k (this is a bit
+            # more expensive than just finding the first non-zero xi, but in general
+            # this loop won't have many iterations)
+            cm = cp = true # carries for -1 and +1
+            i = 0 # the first non-zero position in xv
+            rl = 0
+            @inbounds while cm
+                i += 1
+                xi = xv[i]
+                yi = i > yl ? zero(Limb) : yv[i]
+                ri = (xi - cm) & ~yi + cp
+                cm &= iszero(xi)
+                cp &= iszero(ri)
+                if !iszero(ri)
+                    rl = i
+                end
+            end
+            k = i
+            # beyond i, the formula is xi & ~yi: we scan from the end to find the first non-0
+            i = xl
+            @inbounds while i > k
+                yi = i > yl ? zero(Limb) : yv[i]
+                iszero(xv[i] & ~yi) || break
+                i -= 1
+            end
+            # so far, rl points at the highest non-zero limb upto k in the result
+            if i != k # not all zero above k
+                rl = i
+            end
+            # we are now ready to store the result
+            if rl == 1
+                r1 = @inbounds (xv[1]-1) & ~yv[1] + 1
+                XInt_neg!(r, r1)
+            else
+                rv = vec!(r, rl)
+                cm = cp = true # carries for -1 and +1
+                @inbounds for i=1:rl
+                    xi = xv[i]
+                    yi = i > yl ? zero(Limb) : yv[i]
+                    ri = (xi - cm) & ~yi + cp
+                    cm &= iszero(xi)
+                    cp &= iszero(ri)
+                    rv[i] = ri
+                end
+                _XInt(-rl, rv)
+            end
+        end
+    else # x < 0, y < 0 : r < 0
+        # -u | -v = ~(u-1) | ~(v-1) = ~(u-1 & v-1) = -(u-1 & v-1) - 1
+        # we do a scan, similar to what we do for x < 0, y > 0 and yl >= xl - 1
+        xl, xv = lenvec(x)
+        yl, yv = lenvec(y)
+        if xl < yl
+            xv, yv = yv, xv
+            xl, yl = yl, xl
+        end
+
+        cx, cy, cp = true, true, true
+        i = 0
+        rl = 0
+        while (cx | cy) && i < yl
+            i += 1
+            xi = @inbounds xv[i]
+            yi = @inbounds yv[i]
+            u = (xi-cx) & (yi-cy) + cp
+            if !iszero(u)
+                rl = i
+            end
+            cx &= iszero(xi)
+            cy &= iszero(yi)
+            cp &= iszero(u) # cp = cx & cy would also work
+        end
+        k = i
+        i = yl
+        @inbounds while i > k
+            iszero(xv[i] & yv[i]) || break
+            i -= 1
+        end
+        if i > k
+            rl = i
+        end
+        if rl == 1
+            r1 = @inbounds (xv[1]-1) & (yv[1]-1) + 1
+            XInt_neg!(r, r1)
+        else
+            rv = vec!(r, rl)
+            cx, cy, cp = true, true, true
+            @inbounds for i=1:rl
+                xi = xv[i]
+                yi = yv[i]
+                rv[i] = u = (xi-cx) & (yi-cy) + cp
+                cx &= iszero(xi)
+                cy &= iszero(yi)
+                cp &= iszero(u)
+            end
+            _XInt(-rl, rv)
+        end
     end
 end

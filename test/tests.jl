@@ -1,6 +1,6 @@
 using XInts
 using XInts: SLimb, slimbmin, slimbmax, Limb, ClongMax, CulongMax, CdoubleMax, BITS_PER_LIMB,
-             add!, sub!, com!, lshift!, rshift!, and!, SLimbW, LimbW, vec, is_short
+             add!, sub!, com!, lshift!, rshift!, and!, ior!, SLimbW, LimbW, vec, is_short
 using BitIntegers
 import Random
 
@@ -327,6 +327,7 @@ opmap(::typeof(com!)) = ~
 opmap(::typeof(lshift!)) = <<
 opmap(::typeof(rshift!)) = >>
 opmap(::typeof(and!)) = &
+opmap(::typeof(ior!)) = |
 
 function testop2(op, x, y)
     for a = (-x, x), b = (-y, y)
@@ -374,6 +375,14 @@ function testop2(op, x, y)
     end
 end
 
+function test_alloc(op, x, y, r=nothing)
+    if VERSION >= v"1.5"
+        @test 0 == @allocated op(x, y)
+    end
+    z = op(x, y)
+    @test validate(z) == r
+end
+
 @testset "operations" begin
 
     xs = BigInt[0, 1, 2, rand(0:1000, 5)..., slimbmax, slimbmax-1, slimbmax-2,
@@ -382,6 +391,11 @@ end
                 (LimbW.(rand(Limb, 3)) .<< BITS_PER_LIMB)...,
                 typemax(LimbW), LimbW(typemax(Limb)) << BITS_PER_LIMB, # and!
                 (LimbW(typemax(Limb)) << BITS_PER_LIMB) + 1, # and!
+                (let h = rand(Limb) # ior!
+                     [big(h) << 2BITS_PER_LIMB | big(rand(LimbW)),
+                      big(~h) << 2BITS_PER_LIMB | big(rand(LimbW)),
+                      ]
+                 end)...,
                 (Int128(slimbmax).+rand(UInt8, 5))...,
                 rand(Int128(2)^65:Int128(2)^100, 2)..., rand(big(0):big(2)^200, 2)...,
                 slimbmin] # TODO: slimbmin and 0 are used twice when negated in test(...)
@@ -389,7 +403,7 @@ end
     @testset "$op(::XInt, ::XInt)" for op = (+, -, *, mod, rem, gcd, gcdx, lcm, &, |, xor,
                                              /, div, divrem, fld, cld, invmod,
                                              cmp, <, <=, >, >=, ==, flipsign, binomial,
-                                             add!, sub!, and!)
+                                             add!, sub!, and!, ior!)
         for x=xs, y=xs
             iszero(y) && op ∈ (/, mod, rem, div, divrem, fld, cld, invmod) &&
                 continue
@@ -401,12 +415,18 @@ end
             y = validate(-x+1)
             @test validate(x+y) == big(x) + big(y)
         end
+
+        # special cases
         if op === &
             # special case where the result takes one more limb than the operands
             x = -XInt(XInt(typemax(UInt))<<64 + 1)
             y = -XInt(2)^64
             z = validate(x & y)
             @test z == big(x) & big(y)
+        elseif op === |
+            x = -(XInt(2)^128)
+            y = XInt(2)^128-1
+            test_alloc(|, x, y, -1)
         end
     end
 
