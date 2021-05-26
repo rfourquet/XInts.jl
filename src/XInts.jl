@@ -565,10 +565,13 @@ function digits!(a::AbstractVector{T}, n::XInt; base::Integer = 10) where {T<:In
             a[i += 1] = base ≤ 36 ? (x>0x39 ? x-0x57 : x-0x30) : (x>0x39 ? (x>0x60 ? x-0x3d : x-0x37) : x-0x30)
         end
         lasti = lastindex(a)
-        while i < lasti; a[i+=1] = zero(T); end
-        return isneg(n) ? map!(-,a,a) : a
+        while i < lasti
+            a[i+=1] = zero(T)
+        end
+        isneg(n) ? map!(-,a,a) : a
+    else
+        invoke(digits!, Tuple{typeof(a), Integer}, a, n; base=base) # slow generic fallback
     end
-    return invoke(digits!, Tuple{typeof(a), Integer}, a, n; base=base) # slow generic fallback
 end
 
 ndigits0zpb(x::XInt, b::Integer) = is_short(x) ? ndigits0zpb(x.x, b) :
@@ -678,6 +681,7 @@ if Limb === UInt
                 limb = limb2 << upshift | limb1 >> shift
             end
             if nd <= 1024 && nd - pow <= 53
+                # TODO: add test for this branch
                 return hash(ldexp(flipsign(Float64(limb), sz), pow), h)
             end
             h = hash_integer(1, h)

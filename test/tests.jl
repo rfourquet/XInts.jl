@@ -127,6 +127,9 @@ end
         @test_throws InexactError T(XInt(typemax(T))+XInt(+10))
         @test_throws InexactError T(XInt(typemin(T))+XInt(-1))
         @test_throws InexactError T(XInt(typemin(T))+XInt(-10))
+        @test_throws InexactError T(XInt(2)^200) # for sizeof(T) < sizeof(Limb)
+        # test un-reduced XInt
+        @test T(XInts._XInt(1, Limb[1])) === T(1)
     end
 
     @testset "BigInt(::XInt)" begin
@@ -195,9 +198,10 @@ end
         for r = big(2).^[5, 8, 64, 200]
             for b = rand(-r:r, 5)
                 pad = rand(0:2)
-                base = rand(8:12)
-                @test ndigits(b, pad=pad, base=base) == ndigits(XInt(b), pad=pad, base=base)
-                @test digits(b, pad=pad, base=base) == digits(XInt(b), pad=pad, base=base)
+                for base = [rand(8:12, 3); 100] # 100 > 62, cf. implementation of digits!
+                    @test ndigits(b, pad=pad, base=base) == ndigits(XInt(b), pad=pad, base=base)
+                    @test digits(b, pad=pad, base=base) == digits(XInt(b), pad=pad, base=base)
+                end
             end
         end
     end
@@ -301,7 +305,7 @@ end
 end
 
 @testset "comparisons" begin
-    @testset "==" begin
+    @testset "== (integers)" begin
         xs = BigInt[slimbmin, 0, 1, 2, slimbmax-1, slimbmax, slimbmax+1, big(2)^100]
         xs = [xs..., (-).(xs)...]
         for (a, b) in Iterators.product(xs, xs)
@@ -315,6 +319,19 @@ end
                     z = T(b)
                     @test (x == z) == (a == z) == (z == x)
                 end
+            end
+        end
+    end
+    @testset "XInt with floats" begin
+        for T = Base.uniontypes(CdoubleMax)
+            b = Int(maxintfloat(T))
+            for x = rand(0:b, 10)
+                @test vint(x) == T(x)
+                @test T(x) == vint(x)
+                @test vint(x-1) < T(x)
+                @test T(x) < vint(x+1)
+                @test T(x) <= vint(x) <= T(x)
+
             end
         end
     end
@@ -579,12 +596,18 @@ end
                     end
                 end
             end
+            if op === (^) && !Base.hastypemax(T) || sizeof(T) > sizeof(Culong)
+                c = T(typemax(Culong)) + rand(1:1000)
+                z = XInt(0)
+                @test z^c === z
+                @test_throws OverflowError XInt(2)^c
+            end
         end
     end
 end
 
 @testset "hashing" begin
-    xs = Any[rand(UInt, 10); rand(UInt128, 10); rand(1:big(2)^300, 5)]
+    xs = BigInt[rand(UInt, 10); rand(UInt128, 10); rand(1:big(2)^300, 5)]
     xs = [xs; .-(xs)]
     for x=xs
         h = rand(UInt)
