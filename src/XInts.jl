@@ -60,67 +60,76 @@ const slimbmin = typemin(SLimb)
 const slimbmax = typemax(SLimb)
 # when there is only one limb in a vector, this limb must always be >= limb1min
 # reciprocally, a direct integer must have its absolute value < limb1min
-const limb1min = slimbmin % Limb # typically 0x8000000000000000
+@inline limb1min(::Type{SL}) where SL <: Signed =
+    typemin(SL) % unsigned(SL) # typically 0x8000000000000000
 
 const Limby = Union{Limb,SLimb}
 
-struct XInt <: Signed
+struct XInt_{SLimb<:Signed,Limb<:Unsigned} <: Signed
     x::SLimb # immediate integer or sign+length
     v::Union{Nothing,Vector{Limb}}
 
-    @inline XInt(x::SLimb) =
+    @inline function XInt_{SLimb}(x::SLimb) where {SLimb<:Signed}
+        @assert isbitstype(SLimb)
+        Limb = unsigned(SLimb)
         x === typemin(SLimb) ?
-            new(-one(SLimb), [limb1min]) :
-            new(x, nothing)
+            new{SLimb,Limb}(-one(SLimb), [limb1min(SLimb)]) :
+            new{SLimb,Limb}(x, nothing)
+    end
 
     global _XInt
 
     # unsafe version which doesn't check for typemin(SLimb)
-    _XInt(x::SLimb, ::Nothing=nothing) = new(x, nothing)
+    _XInt(x::SLimb, ::Nothing=nothing) where {SLimb<:Signed} =
+        new{SLimb,unsigned(SLimb)}(x, nothing)
 
-    function _XInt(x::SLimb, v::Vector{Limb}, reduce::Bool=false)
+    function _XInt(x::SLimb, v::Vector{Limb}, reduce::Bool=false) where {SLimb<:Signed,Limb<:Unsigned}
+        @assert isbitstype(SLimb) && unsigned(SLimb) === Limb
         if reduce
             # we still assume length(v) >= abs(x); reduce here means to not store
             # a too small integer in a vector representation
             xl = abs(x)
             if xl <= 1
                 if xl == 0
-                    return new(SLimb(0), nothing)
+                    return new{SLimb,Limb}(SLimb(0), nothing)
                 else # xl == 1
                     limb = @inbounds v[1]
-                    limb < limb1min &&
-                        return new(flipsign(limb % SLimb, x), nothing)
+                    limb < limb1min(SLimb) &&
+                        return new{SLimb,Limb}(flipsign(limb % SLimb, x), nothing)
                 end
             end
         end
-        new(x, v)
+        new{SLimb,Limb}(x, v)
     end
 end
 
 
-XInt(x::XInt) = x
+(::Type{XInt})(x::XInt) where XInt<:XInt_= x
 
 # reducing version of XInt(::XInt)
-_XInt(x::XInt) =
+_XInt(x::XInt) where XInt =
     if x.v === nothing
         x
     else
         _XInt(x.x, vec(x), true)
     end
 
-_XInt(u::Limb) = _XInt(u % SLimb) # no check done that u fits
+_XInt(u::Limb) where {Limb} = _XInt(u % signed(Limb)) # no check done that u fits
 
-is_short(x::XInt) = x.v === nothing
-is_short(x::XInt, y::XInt) = x.v === nothing === y.v
+is_short(x::XInt_) = x.v === nothing
+is_short(x::XInt_, y::XInt_) = x.v === nothing === y.v
 
 include("MPN.jl")
 include("mutants.jl")
 
-MPN.ptr(x::XInt) = pointer(x.v::Vector{Limb})
-MPN.len(x::XInt) = abs(x.x) % MPN.Size
-len(x::XInt) = abs(x.x)
+limbtype(x::XInt_{S,L}) where {S,L} = L
+slimbtype(x::XInt_{S,L}) where {S,L} = S
 
-function XInt(z::BigInt)
+MPN.ptr(x::XInt_) = pointer(x.v::Vector{limbtype(x)})
+MPN.len(x::XInt_) = abs(x.x) % MPN.Size
+len(x::XInt_) = abs(x.x)
+
+function (::Type{XInt})(z::BigInt) where {XInt}
     len = abs(z.size)
     if len == 0
         XInt(zero(SLimb))
