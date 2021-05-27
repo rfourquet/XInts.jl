@@ -352,10 +352,12 @@ end
 (&)(x::XInt, y::XInt) = and!(nothing, x, y)
 (|)(x::XInt, y::XInt) = ior!(nothing, x, y)
 
-sum(arr::AbstractArray{XInt}) = _XInt(
+function sum(arr::AbstractArray{XInt})
+    buffer = _XInt(0, Limb[])
     foldl(arr; init=XInt(0)) do x, y
-        add!(x, x, y, false)
-    end)
+        add!(buffer, x, y)
+    end
+end
 
 for (r, f!) in ((RoundToZero, :tdiv_q!),
                (RoundDown, :fdiv_q!),

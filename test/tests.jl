@@ -417,6 +417,29 @@ end
                 rand(Int128(2)^65:Int128(2)^100, 2)..., rand(big(0):big(2)^200, 2)...,
                 slimbmin] # TODO: slimbmin and 0 are used twice when negated in test(...)
 
+    # add!
+    let
+        x4 = rand(1:typemax(Limb))
+        y4 = x4-1
+        z = Limb(1)<<63
+        y1 = rand(z : typemax(Limb))
+        x1 = rand(Limb(0) : y1-z) # y1-z >= 0
+        # y1-x1 >= z, so x1-y1 doesn't have top bit set
+        x2 = rand(1:typemax(Limb))
+        y2 = x2-1 # 2nd limb must absorb carry, and become 0
+        x = XInt(x4) << 3BITS_PER_LIMB | XInt(x2) << BITS_PER_LIMB | x1
+        y = XInt(y4) << 3BITS_PER_LIMB | XInt(y2) << BITS_PER_LIMB | y1
+        u2 = rand(0:x2-1)
+        u = XInt(y4) << 3BITS_PER_LIMB | XInt(u2) << BITS_PER_LIMB | y1
+        # w, v: similar x and y, but with a 3rd limb, to have carry propagate
+        w3 = rand(1:typemax(Limb))
+        w = x | XInt(w3) << 2BITS_PER_LIMB
+        v2 = rand(x2:typemax(Limb))
+        v3 = rand(0:w3-1)
+        v = XInt(y4) << 3BITS_PER_LIMB | XInt(v3) << 2BITS_PER_LIMB | XInt(v2) << BITS_PER_LIMB | y1
+        push!(xs, x, y, u, v, w)
+    end
+
     @testset "$op(::XInt, ::XInt)" for op = (+, -, *, mod, rem, gcd, gcdx, lcm, &, |, xor,
                                              /, div, divrem, fld, cld, invmod,
                                              cmp, <, <=, >, >=, ==, flipsign, binomial,
