@@ -19,10 +19,6 @@ vec!(x::XInt, n::Integer) =
 
 vec!(::Nothing, n::Integer) = _vec(n)
 
-# copy only when an output parameter is provided for in-place operations
-_maybe_copy!(r::Nothing, x::XInt) = x
-_maybe_copy!(r::XInt, x::XInt) = _copy!(r, x)
-
 # copy x into r, allocating for r when r===nothing
 # assumes !is_short(x)
 _copy!(r::XIntV, x::XInt) =
@@ -395,7 +391,7 @@ end
 @inline function rshift!(r::XIntV, x::XInt, c::Cuint)
     z = x.x
     is_short(x) && return _XInt(z >> c)
-    (iszero(z) || iszero(c)) && return _maybe_copy!(r, x)
+    (iszero(z) || iszero(c)) && return x
     rshift_big!(r, x, c)
 end
 
@@ -516,7 +512,7 @@ end
         if iszero(x1)
             # if x1 == 0, we see that a 2-complement representation of x would also
             # have a null first limb, so x & y == x
-            _maybe_copy!(r, x)
+            x
         else
             # x1 > 0, so x-1 differs from x only in the 1st limb
             r1 = (x1-1) | ~y
@@ -700,14 +696,10 @@ end
     yshort = is_short(y)
     if xshort & yshort
         XInt!(r, x.x | y.x)
-    elseif iszero(x)
-        _maybe_copy!(r, y) # !yshort, as xshort
-    elseif iszero(y)
-        _maybe_copy!(r, x) # !xshort
     elseif xshort
-        ior_small!(r, y, x)
+        iszero(x) ? y : ior_small!(r, y, x)
     elseif yshort
-        ior_small!(r, x, y)
+        iszero(y) ? x : ior_small!(r, x, y)
     else
         ior_big!(r, x, y)
     end

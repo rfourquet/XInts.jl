@@ -381,10 +381,12 @@ function testop2(op, x, y)
         if opmap(op) != op
             # mutating
             tmp = XInts._XInt(0, Limb[])
-            rtmp = validate(op(tmp, vint(a), vint(b)))
+            aa, bb = vint(a), vint(b)
+            rtmp = validate(op(tmp, aa, bb))
             @test rtmp == r
             if !is_short(r)
-                @test vec(rtmp) === vec(tmp)
+                @test vec(rtmp) === vec(tmp) || !is_short(aa) && vec(rtmp) === vec(aa) ||
+                    vec(rtmp) === vec(bb)
             end
             tmp = XInts._XInt(0)
             @test validate(op(tmp, vint(a), vint(b))) == r
@@ -609,10 +611,11 @@ end
                     if opmap(op) != op
                         # mutating
                         tmp = XInts._XInt(0, Limb[])
-                        rtmp = validate(op(tmp, vint(x), T(c)))
+                        xx = vint(x)
+                        rtmp = validate(op(tmp, xx, T(c)))
                         @test rtmp == r
                         if !is_short(r)
-                            @test vec(rtmp) === vec(tmp)
+                            @test vec(rtmp) === vec(tmp) || vec(rtmp) === vec(xx)
                         end
                         tmp = XInts._XInt(0)
                         @test validate(op(tmp, vint(x), T(c))) == r
