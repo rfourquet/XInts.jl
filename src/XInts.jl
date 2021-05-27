@@ -722,26 +722,23 @@ using Random: Random, Repetition, AbstractRNG
 
 abstract type SamplerXInt <: Sampler{XInt} end
 
-struct SamplerXIntBig <: SamplerXInt
+struct SamplerXIntBig{SP<:Sampler{Limb}} <: SamplerXInt
     a::XInt           # first
-    m::XInt           # range length - 1
-    nlimbs::SLimb     # number of limbs in generated XInt's (z ∈ [0, m])
+    m::XInt           # range length - 1 (generate z ∈ [0, m])
     nlimbsmax::SLimb  # max number of limbs for z+a
-    mask::Limb        # applied to the highest limb
+    highsp::SP        # sampler for the highest limb
 end
 
 safe_len(x::XInt) = is_short(x) ? SLimb(iszero(x)) : abs(x.x)
 
-function SamplerXIntBig(r1::XInt, r2::XInt, m::XInt)
-    @assert !is_short(m)
+function SamplerXIntBig(::Type{RNG}, r1::XInt, r2::XInt, m::XInt) where {RNG<:AbstractRNG}
     m < 0 && throw(ArgumentError("range must be non-empty"))
-    nd = ndigits(m, base=2)
-    nlimbs, highbits = divrem(nd, 8*sizeof(Limb))
-    highbits > 0 && (nlimbs += 1)
-    mask = highbits == 0 ? ~zero(Limb) : one(Limb)<<highbits - one(Limb)
+    nlimbs, mv = lenvec(m)
     nlimbsmax = max(nlimbs, safe_len(r2), safe_len(r1))
     nlimbsmax += ispos(r1) # add! will request one more limb just in case
-    SamplerXIntBig(r1, m, nlimbs, nlimbsmax, mask)
+    mvl = @inbounds mv[nlimbs]
+    highsp = Sampler(RNG, zero(Limb):mvl)
+    SamplerXIntBig(r1, m, nlimbsmax, highsp)
 end
 
 struct SamplerXIntMixed{SP<:Sampler{SLimb}} <: SamplerXInt
@@ -764,7 +761,7 @@ function Sampler(::Type{RNG}, r::AbstractUnitRange{XInt}, N::Repetition
         if is_short(m) # TODO: could also be m <= typemax(UInt128)
             SamplerXIntMixed(Sampler(RNG, SLimb(0):m.x, N), r1)
         else
-            SamplerXIntBig(r1, r2, m)
+            SamplerXIntBig(RNG, r1, r2, m)
         end
     end
 end
@@ -772,11 +769,13 @@ end
 rand(rng::AbstractRNG, sp::SamplerXInt) = rand!(rng, _XInt(0), sp)
 
 function rand!(rng::AbstractRNG, x::XInt, sp::SamplerXIntBig)
-    nlimbs = sp.nlimbs
+    nlimbs, mv = lenvec(sp.m)
     limbs = vec!(x, sp.nlimbsmax)
+    mvl = @inbounds mv[nlimbs]
     while true
-        rand!(rng, @view(limbs[1:nlimbs]))
-        @inbounds limbs[nlimbs] &= sp.mask
+        @inbounds rand!(rng, @view(limbs[1:nlimbs-1]))
+        @inbounds h = limbs[nlimbs] = rand(rng, sp.highsp)
+        h < mvl && break
         MPN.cmp(limbs, sp.m, nlimbs) <= 0 && break
     end
     len = normalize(limbs, nlimbs)
