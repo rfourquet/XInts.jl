@@ -353,10 +353,16 @@ end
 (|)(x::XInt, y::XInt) = ior!(nothing, x, y)
 
 function sum(arr::AbstractArray{XInt})
-    buffer = _XInt(0, Limb[])
-    foldl(arr; init=XInt(0)) do x, y
-        add!(buffer, x, y)
+    s = buffer = _XInt(0)
+    # can't use foldl, as updating buffer in the higher function
+    # has overhead, even when using a Ref
+    for x = arr
+        s = add!(buffer, s, x)
+        if !is_short(s)
+            buffer = s
+        end
     end
+    s
 end
 
 for (r, f!) in ((RoundToZero, :tdiv_q!),
