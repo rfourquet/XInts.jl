@@ -154,18 +154,20 @@ function _sub1!(r::XIntV, x::XInt, y::Limb)
     end
 end
 
-@inline add!(r::XIntV, x::XInt, y::XInt) =
-    if is_short(x)
-        if is_short(y)
-            XInt!(r, widen(x.x) + widen(y.x))
-        else
-            add1!(r, y, x.x)
-        end
-    elseif is_short(y)
-        add1!(r, x, y.x)
+@inline function add!(r::XIntV, x::XInt, y::XInt)
+    xshort = is_short(x)
+    yshort = is_short(y)
+    if xshort & yshort
+        XInt!(r, widen(x.x) + widen(y.x))
+    elseif xshort
+        iszero(x) ? y : add1!(r, y, x.x)
+    elseif yshort
+        iszero(y) ? x : add1!(r, x, y.x)
     else
         addbig!(r, x, y)
     end
+end
+
 
 # NOTE: this is still unfortunately roughly 2x slower than MPZ.add! for BigInt
 # we recover a lot of perfs if we inline instead, but that's a big function...
