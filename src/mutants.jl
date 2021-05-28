@@ -108,7 +108,7 @@ XInt!(r::XIntV, z::LimbW) =
         end
     end
 
-function normalize(v::Vector, l::Integer)
+@inline function normalize(v::Vector, l::Integer)
     # @assert l <= length(v)
     while l > 0
         iszero(@inbounds v[l]) || break
@@ -117,7 +117,7 @@ function normalize(v::Vector, l::Integer)
     l
 end
 
-function add1!(r::XIntV, x::XInt, y::SLimb)
+function add1!(r::XIntV, x::XInt, y::Limby)
     # @assert !is_short(x)
     samesign = signbit(x) == signbit(y)
     if samesign
@@ -137,16 +137,25 @@ function _add1!(r::XIntV, x::XInt, y::Limb)
 end
 
 function _sub1!(r::XIntV, x::XInt, y::Limb)
-    xl = abs(x.x)
-    # we know that abs(x) > y, as y comes from a SLimb, whose absolute value
-    # is < |typemmin(SLimb)| == limb1min (upper bit of y is not set)
+    xz = x.x
+    xl, xv = lenvec(x)
     if xl == 1
-        xv = vec(x)
-        # xv[1] >= limb1min by specification
-        rv1 = @inbounds xv[1] - y
-        XInt!(r, rv1, x.x)
+        rv1, c = Base.sub_with_overflow(@inbounds(xv[1]), y)
+        if c
+            xz = -xz
+            rv1 = -rv1
+        end
+        XInt!(r, rv1, xz)
+    elseif xl == 2
+        rv1, c = Base.sub_with_overflow(@inbounds(xv[1]), y)
+        rv2 = @inbounds(xv[2]) - c
+        if iszero(rv2)
+            XInt!(r, rv1, xz)
+        else
+            _XInt(xz, assign!(r, rv1, rv2))
+        end
     else
-        # if xl > 1, we see that x-y can't be an immediate integer
+        # if xl > 2, we see that x-y can't be an immediate integer
         rv = vec!(r, xl)
         MPN.sub_1(rv, x=>xl, y)
         rl = xl-iszero(@inbounds rv[xl])
@@ -154,15 +163,24 @@ function _sub1!(r::XIntV, x::XInt, y::Limb)
     end
 end
 
-@inline function add!(r::XIntV, x::XInt, y::XInt)
+is_short(::LimbyMax) = true
+
+short(x::ULimbMax) = x % Limb
+short(x::SLimbMax) = x % SLimb
+short(x::XInt) = x.x
+
+_widen(x::Union{SLimbMax,ULimbMax}) = x % SLimbW
+_widen(x::XInt) = widen(x.x)
+
+@inline function add!(r::XIntV, x::Union{XInt,LimbyMax}, y::Union{XInt,LimbyMax})
     xshort = is_short(x)
     yshort = is_short(y)
     if xshort & yshort
-        XInt!(r, widen(x.x) + widen(y.x))
+        XInt!(r, _widen(x) + _widen(y))
     elseif xshort
-        iszero(x) ? y : add1!(r, y, x.x)
+        iszero(x) ? y : add1!(r, y, short(x))
     elseif yshort
-        iszero(y) ? x : add1!(r, x, y.x)
+        iszero(y) ? x : add1!(r, x, short(y))
     else
         addbig!(r, x, y)
     end
@@ -281,7 +299,18 @@ add!(x::XInt, y::XInt) = add!(x, x, y)
 
 neg!(x::XInt) = _XInt(-x.x, x.v)
 
-sub!(r::XIntV, x::XInt, y::XInt) = add!(r, x, neg!(y))
+sub!(r::XIntV, x::Union{XInt,LimbyMax}, y::XInt) = add!(r, x, neg!(y))
+sub!(r::XIntV, x::XInt, y::ULimbMax) = neg!(add!(r, neg!(x), y))
+
+function sub!(r::XIntV, x::XInt, y::SLimbMax)
+    yy = y % SLimb
+    if yy !== typemin(SLimb)
+        add!(r, x, -yy)
+    else
+        add!(r, x, yy % Limb)
+    end
+end
+
 sub!(x::XInt, y::XInt) = sub!(x, x, y)
 
 # set r to ~x == -(x+1)

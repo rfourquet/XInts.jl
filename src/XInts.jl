@@ -63,6 +63,7 @@ const slimbmax = typemax(SLimb)
 const limb1min = slimbmin % Limb # typically 0x8000000000000000
 
 const Limby = Union{Limb,SLimb}
+const LimbyMax = Union{ULimbMax,SLimbMax}
 
 struct XInt <: Signed
     x::SLimb # immediate integer or sign+length
@@ -347,10 +348,17 @@ end
 
 # TODO: 3+ args specializations for some ops, like in gmp.jl
 
-+(x::XInt, y::XInt) = add!(nothing, x, y)
--(x::XInt, y::XInt) = sub!(nothing, x, y)
-(&)(x::XInt, y::XInt) = and!(nothing, x, y)
-(|)(x::XInt, y::XInt) = ior!(nothing, x, y)
+# we put @inline, as it seems these methods don't by themselves,
+# maybe because add! is already inline and too big
+@inline +(x::XInt,     y::XInt)     = add!(nothing, x, y)
+@inline +(x::XInt,     y::LimbyMax) = add!(nothing, x, y)
+@inline +(x::LimbyMax, y::XInt)     = add!(nothing, x, y)
+@inline -(x::XInt,     y::XInt)     = sub!(nothing, x, y)
+@inline -(x::XInt,     y::LimbyMax) = sub!(nothing, x, y)
+@inline -(x::LimbyMax, y::XInt)     = sub!(nothing, x, y)
+
+@inline (&)(x::XInt, y::XInt) = and!(nothing, x, y)
+@inline (|)(x::XInt, y::XInt) = ior!(nothing, x, y)
 
 function sum(arr::AbstractArray{XInt})
     s = buffer = _XInt(0)
@@ -389,21 +397,6 @@ invmod(x::XInt, y::XInt) =
                      @bigint () x y XInt(invmod(x, y))
 
 # Basic arithmetic without promotion
-+(x::XInt, c::CulongMax) = is_short(x) ? XInt(widen(x.x) + c) :
-                                         @bigint z x XInt(MPZ.add_ui!(z, x, c))
-+(c::CulongMax, x::XInt) = x + c
-
--(x::XInt, c::CulongMax) = is_short(x) ? XInt(widen(x.x) - c) :
-                                         @bigint z x XInt(MPZ.sub_ui!(z, x, c))
-
--(c::CulongMax, x::XInt) = is_short(x) ? XInt(c - widen(x.x)) :
-                                         @bigint z x XInt(MPZ.ui_sub!(z, c, x))
-
-+(x::XInt, c::ClongMax) = c < 0 ? -(x, -(c % Culong)) : x + convert(Culong, c)
-+(c::ClongMax, x::XInt) = c < 0 ? -(x, -(c % Culong)) : x + convert(Culong, c)
--(x::XInt, c::ClongMax) = c < 0 ? +(x, -(c % Culong)) : -(x, convert(Culong, c))
--(c::ClongMax, x::XInt) = c < 0 ? -(x + -(c % Culong)) : -(convert(Culong, c), x)
-
 *(x::XInt, c::CulongMax) = is_short(x) ? XInt(widen(x.x) * c) :
                                          @bigint z x XInt(MPZ.mul_ui!(z, x, c))
 
