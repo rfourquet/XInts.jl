@@ -731,44 +731,41 @@ end
 
 safe_len(x::XInt) = is_short(x) ? SLimb(iszero(x)) : abs(x.x)
 
-function SamplerXIntBig(::Type{RNG}, r1::XInt, r2::XInt, m::XInt) where {RNG<:AbstractRNG}
-    m < 0 && throw(ArgumentError("range must be non-empty"))
-    nlimbs, mv = lenvec(m)
-    nlimbsmax = max(nlimbs, safe_len(r2), safe_len(r1))
-    nlimbsmax += ispos(r1) # add! will request one more limb just in case
-    mvl = @inbounds mv[nlimbs]
+@noinline function SamplerXIntBig(::Type{RNG}, r1::XInt, r2::XInt) where {RNG<:AbstractRNG}
+    m = r2-r1
+    isneg(m) && throw(ArgumentError("range must be non-empty"))
+    if is_short(m)
+        mvl = m.x % Limb
+        nlimbsmax = 0
+    else
+        nlimbs, mv = lenvec(m)
+        nlimbsmax = max(nlimbs, safe_len(r2), safe_len(r1))
+        nlimbsmax += ispos(r1) # add! will request one more limb just in case
+        mvl = @inbounds mv[nlimbs]
+    end
     highsp = Sampler(RNG, zero(Limb):mvl)
     SamplerXIntBig(r1, m, nlimbsmax, highsp)
 end
 
-struct SamplerXIntMixed{SP<:Sampler{SLimb}} <: SamplerXInt
-    sp::SP
-    a::XInt
-end
-
-struct SamplerXIntSmall{SP<:Sampler{SLimb}} <: SamplerXInt
+struct SamplerXIntShort{SP<:Sampler{SLimb}} <: SamplerXInt
     sp::SP
 end
 
-function Sampler(::Type{RNG}, r::AbstractUnitRange{XInt}, N::Repetition
+@inline function Sampler(::Type{RNG}, r::AbstractUnitRange{XInt}, N::Repetition
                  ) where {RNG<:AbstractRNG}
     r1, r2 = first(r), last(r)
     if is_short(r1, r2)
-        # SamplerXIntMixed would work also in this case, but is 2x slower
-        SamplerXIntSmall(Sampler(RNG, r1.x:r2.x, N))
+        SamplerXIntShort(Sampler(RNG, r1.x:r2.x, N))
     else
-        m = r2 - r1
-        if is_short(m) # TODO: could also be m <= typemax(UInt128)
-            SamplerXIntMixed(Sampler(RNG, SLimb(0):m.x, N), r1)
-        else
-            SamplerXIntBig(RNG, r1, r2, m)
-        end
+        SamplerXIntBig(RNG, r1, r2)
     end
 end
 
 rand(rng::AbstractRNG, sp::SamplerXInt) = rand!(rng, _XInt(0), sp)
 
 function rand!(rng::AbstractRNG, x::XInt, sp::SamplerXIntBig)
+    iszero(sp.nlimbsmax) &&
+        return add!(x, sp.a, _XInt(rand(rng, sp.highsp)))
     nlimbs, mv = lenvec(sp.m)
     limbs = vec!(x, sp.nlimbsmax)
     mvl = @inbounds mv[nlimbs]
@@ -782,9 +779,6 @@ function rand!(rng::AbstractRNG, x::XInt, sp::SamplerXIntBig)
     add!(_XInt(len, limbs, false), _XInt(len, limbs, true), sp.a)
 end
 
-rand!(rng::AbstractRNG, x::XInt, sp::SamplerXIntMixed) =
-    add!(x, sp.a, _XInt(rand(rng, sp.sp)))
-
-rand!(rng::AbstractRNG, ::XInt, sp::SamplerXIntSmall) = _XInt(rand(rng, sp.sp))
+rand!(rng::AbstractRNG, ::XInt, sp::SamplerXIntShort) = _XInt(rand(rng, sp.sp))
 
 end # module
