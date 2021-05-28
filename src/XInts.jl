@@ -62,8 +62,8 @@ const slimbmax = typemax(SLimb)
 # reciprocally, a direct integer must have its absolute value < limb1min
 const limb1min = slimbmin % Limb # typically 0x8000000000000000
 
-const Limby = Union{Limb,SLimb}
-const LimbyMax = Union{ULimbMax,SLimbMax}
+const Short = Union{Limb,SLimb}
+const ShortMax = Union{ULimbMax,SLimbMax}
 
 struct XInt <: Signed
     x::SLimb # immediate integer or sign+length
@@ -351,11 +351,11 @@ end
 # we put @inline, as it seems these methods don't by themselves,
 # maybe because add! is already inline and too big
 @inline +(x::XInt,     y::XInt)     = add!(nothing, x, y)
-@inline +(x::XInt,     y::LimbyMax) = add!(nothing, x, y)
-@inline +(x::LimbyMax, y::XInt)     = add!(nothing, x, y)
+@inline +(x::XInt,     y::ShortMax) = add!(nothing, x, y)
+@inline +(x::ShortMax, y::XInt)     = add!(nothing, x, y)
 @inline -(x::XInt,     y::XInt)     = sub!(nothing, x, y)
-@inline -(x::XInt,     y::LimbyMax) = sub!(nothing, x, y)
-@inline -(x::LimbyMax, y::XInt)     = sub!(nothing, x, y)
+@inline -(x::XInt,     y::ShortMax) = sub!(nothing, x, y)
+@inline -(x::ShortMax, y::XInt)     = sub!(nothing, x, y)
 
 @inline (&)(x::XInt, y::XInt) = and!(nothing, x, y)
 @inline (|)(x::XInt, y::XInt) = ior!(nothing, x, y)

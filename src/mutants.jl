@@ -45,7 +45,7 @@ end
     v
 end
 
-@inline XInt!(r::XIntV, z::Limby) =
+@inline XInt!(r::XIntV, z::Short) =
     fits(z) ? _XInt(z % SLimb) :
               _XInt(flipsign(one(SLimb), z), assign!(r, z))
 
@@ -117,7 +117,7 @@ XInt!(r::XIntV, z::LimbW) =
     l
 end
 
-function add1!(r::XIntV, x::XInt, y::Limby)
+function add1!(r::XIntV, x::XInt, y::Short)
     # @assert !is_short(x)
     samesign = signbit(x) == signbit(y)
     if samesign
@@ -163,7 +163,7 @@ function _sub1!(r::XIntV, x::XInt, y::Limb)
     end
 end
 
-is_short(::LimbyMax) = true
+is_short(::ShortMax) = true
 
 short(x::ULimbMax) = x % Limb
 short(x::SLimbMax) = x % SLimb
@@ -172,7 +172,7 @@ short(x::XInt) = x.x
 _widen(x::Union{SLimbMax,ULimbMax}) = x % SLimbW
 _widen(x::XInt) = widen(x.x)
 
-@inline function add!(r::XIntV, x::Union{XInt,LimbyMax}, y::Union{XInt,LimbyMax})
+@inline function add!(r::XIntV, x::Union{XInt,ShortMax}, y::Union{XInt,ShortMax})
     xshort = is_short(x)
     yshort = is_short(y)
     if xshort & yshort
@@ -299,7 +299,7 @@ add!(x::XInt, y::XInt) = add!(x, x, y)
 
 neg!(x::XInt) = _XInt(-x.x, x.v)
 
-sub!(r::XIntV, x::Union{XInt,LimbyMax}, y::XInt) = add!(r, x, neg!(y))
+sub!(r::XIntV, x::Union{XInt,ShortMax}, y::XInt) = add!(r, x, neg!(y))
 sub!(r::XIntV, x::XInt, y::ULimbMax) = neg!(add!(r, neg!(x), y))
 
 function sub!(r::XIntV, x::XInt, y::SLimbMax)
