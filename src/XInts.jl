@@ -739,9 +739,14 @@ safe_len(x::XInt) = is_short(x) ? SLimb(iszero(x)) : abs(x.x)
         nlimbsmax = 0
     else
         nlimbs, mv = lenvec(m)
-        nlimbsmax = max(nlimbs, safe_len(r2), safe_len(r1))
-        nlimbsmax += ispos(r1) # add! will request one more limb just in case
-        mvl = @inbounds mv[nlimbs]
+        if nlimbs == 1
+            mvl = @inbounds mv[1]
+            nlimbsmax = 0
+        else
+            nlimbsmax = max(nlimbs, safe_len(r2), safe_len(r1))
+            nlimbsmax += ispos(r1) # add! will request one more limb just in case
+            mvl = @inbounds mv[nlimbs]
+        end
     end
     highsp = Sampler(RNG, zero(Limb):mvl)
     SamplerXIntBig(r1, m, nlimbsmax, highsp)
