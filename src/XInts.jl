@@ -145,7 +145,25 @@ XInt(z::Union{ULimbMax,SLimbMax}) = _XInt(z % SLimb)
 
 XInt(z::Union{SLimbW,LimbW}) = XInt!(nothing, z)
 
-XInt(z::Integer) = XInt(BigInt(z)) # TODO: copy over the implementation from gmp.jl
+# TODO: this can be made quite faster for "bit integers": for some reason, allocating
+# limbs according to sizeof(z) (and breaking the loop when iszero(zz))
+# is more efficient than via ndigits (although ndigits seems to be fast)
+# NOTE: also, it allocates more than expected for e.g. Int256, and this disappears
+# if the function is re-evaled (then we get 1 allocation as expected)
+function XInt(z::Integer)::XInt
+    slimbmin < z <= slimbmax &&
+        return _XInt((z % SLimb)::SLimb)
+    nd = ndigits(z, base=2)
+    xl = _divLimb(nd)
+    xl += !iszero(_modLimb(nd))
+    limbs = _vec(xl)
+    zz = abs(z)
+    for i=1:xl
+        @inbounds limbs[i] = zz % Limb
+        zz >>>= BITS_PER_LIMB
+    end
+    _XInt(flipsign(xl, z), limbs)
+end
 
 function XInt(x::Float64)
     isinteger(x) || throw(InexactError(:XInt, XInt, x))
