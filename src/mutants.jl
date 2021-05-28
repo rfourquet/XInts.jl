@@ -60,48 +60,44 @@ end
         XInt!(r, z)
 
 
-@inline XInt!(r::XIntV, z::SLimbW, reduce::Bool=true) =
+@inline XInt!(r::XIntV, z::SLimbW, extra::SLimb=0) =
+    # @assert extra >= 0
     if slimbmin < z <= slimbmax
-        zs = z % SLimb
-        if reduce || r === nothing || is_short(r)
-            _XInt(zs)
-        else
-            rv = vec!(r, 1)
-            @inbounds rv[1] = abs(zs)
-            _XInt(sign(zs), rv)
-        end
+        _XInt(z % SLimb)
     else
-        XInt_big!(r, z, reduce)
+        XInt_big!(r, z, extra)
     end
 
-@noinline function XInt_big!(r::XIntV, z::SLimbW, reduce::Bool=true)
+@noinline function XInt_big!(r::XIntV, z::SLimbW, extra::SLimb)
+    # @assert extra >= 0
     zz = abs(z)
     z1 = zz % Limb
     z2 = (zz >>> BITS_PER_LIMB) % Limb
     if iszero(z2)
-        rv = vec!(r, 1)
+        rv = vec!(r, 1+extra)
         @inbounds rv[1] = z1
         _XInt(sign(z) % SLimb, rv)
     else
-        rv = vec!(r, 2)
+        rv = vec!(r, 2+extra)
         @inbounds rv[1] = z1
         @inbounds rv[2] = z2
         _XInt(flipsign(SLimb(2), z), rv)
     end
 end
 
-XInt!(r::XIntV, z::LimbW) =
+XInt!(r::XIntV, z::LimbW, extra::SLimb=0) =
+    # @assert extra >= 0
     if z <= slimbmax
         _XInt(z % SLimb)
     else
         z1 = z % Limb
         z2 = (z >>> BITS_PER_LIMB) % Limb
         if iszero(z2)
-            rv = vec!(r, 1)
+            rv = vec!(r, 1+extra)
             @inbounds rv[1] = z1
             _XInt(SLimb(1), rv)
         else
-            rv = vec!(r, 2)
+            rv = vec!(r, 2+extra)
             @inbounds rv[1] = z1
             @inbounds rv[2] = z2
             _XInt(SLimb(2), rv)

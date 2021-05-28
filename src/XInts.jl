@@ -121,18 +121,21 @@ MPN.ptr(x::XInt) = pointer(x.v::Vector{Limb})
 MPN.len(x::XInt) = abs(x.x) % MPN.Size
 len(x::XInt) = abs(x.x)
 
-function XInt(z::BigInt)
+function _XInt(z::BigInt, extra::SLimb=0)
+    # @assert extra >= 0
     len = abs(z.size)
     if len == 0
         XInt(zero(SLimb))
-    elseif len == 1 && (x = unsafe_load(z.d)) <= slimbmax
+    elseif len == 1 && (x = unsafe_load(z.d)) < limb1min
         XInt(flipsign(x % SLimb, z.size))
     else
-        x = _XInt(z.size % SLimb, Vector{Limb}(undef, len))
+        x = _XInt(z.size % SLimb, Vector{Limb}(undef, len+extra))
         @preserve x z unsafe_copyto!(pointer(x.v), z.d, len)
         x
     end
 end
+
+XInt(z::BigInt) = _XInt(z)
 
 fits(z::Limb) = !Core.is_top_bit_set(z) # z < limb1min
 fits(z::SLimb) = z !== slimbmin
@@ -144,13 +147,14 @@ XInt(z::Limb) = XInt!(nothing, z)
 XInt(z::Union{ULimbMax,SLimbMax}) = _XInt(z % SLimb)
 
 XInt(z::Union{SLimbW,LimbW}) = XInt!(nothing, z)
+_XInt(z::Union{SLimbW,LimbW}, extra::SLimb=0) = XInt!(nothing, z, extra)
 
 # TODO: this can be made quite faster for "bit integers": for some reason, allocating
 # limbs according to sizeof(z) (and breaking the loop when iszero(zz))
 # is more efficient than via ndigits (although ndigits seems to be fast)
 # NOTE: also, it allocates more than expected for e.g. Int256, and this disappears
 # if the function is re-evaled (then we get 1 allocation as expected)
-function XInt(z::Integer)::XInt
+function _XInt(z::Integer, extra::SLimb=0)::XInt
     slimbmin < z <= slimbmax &&
         return _XInt((z % SLimb)::SLimb)
     nd = ndigits(z, base=2)
@@ -164,6 +168,8 @@ function XInt(z::Integer)::XInt
     end
     _XInt(flipsign(xl, z), limbs)
 end
+
+@inline XInt(z::Integer) = _XInt(z)
 
 function XInt(x::Float64)
     isinteger(x) || throw(InexactError(:XInt, XInt, x))
@@ -374,6 +380,11 @@ end
 @inline -(x::XInt,     y::XInt)     = sub!(nothing, x, y)
 @inline -(x::XInt,     y::ShortMax) = sub!(nothing, x, y)
 @inline -(x::ShortMax, y::XInt)     = sub!(nothing, x, y)
+
+@inline +(x::XInt, y::Integer) = add!(_XInt(y, 1), x)
+@inline +(x::Integer, y::XInt) = add!(_XInt(x, 1), y)
+@inline -(x::XInt, y::Integer) = neg!(sub!(_XInt(y, 1), x))
+@inline -(x::Integer, y::XInt) = sub!(_XInt(x, 1), y)
 
 @inline (&)(x::XInt, y::XInt) = and!(nothing, x, y)
 @inline (|)(x::XInt, y::XInt) = ior!(nothing, x, y)
