@@ -174,9 +174,9 @@ _widen(x::XInt) = widen(x.x)
     if xshort & yshort
         XInt!(r, _widen(x) + _widen(y))
     elseif xshort
-        iszero(x) ? y : add1!(r, y, short(x))
+        iszero(x) ? y::XInt : add1!(r, y, short(x))
     elseif yshort
-        iszero(y) ? x : add1!(r, x, short(y))
+        iszero(y) ? x::XInt : add1!(r, x, short(y))
     else
         addbig!(r, x, y)
     end
