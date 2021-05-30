@@ -3,7 +3,7 @@ const XIntV = Union{XInt, Nothing}
 _vec(n::Integer) = Vector{Limb}(undef, n)
 @inline vec(x::XInt) = x.v::Vector{Limb}
 
-lenvec(x::XInt) = len(x), vec(x)
+lenvec(x::XSigned) = len(x), vec(x)
 
 vec!(x::XInt, n::Integer) =
     if is_short(x)
@@ -113,7 +113,7 @@ XInt!(r::XIntV, z::LimbW, extra::SLimb=0) =
     l
 end
 
-function add1!(r::XIntV, x::XInt, y::Short)
+function add1!(r::XIntV, x::XSigned, y::Short)
     # @assert !is_short(x)
     samesign = signbit(x) == signbit(y)
     if samesign
@@ -123,60 +123,48 @@ function add1!(r::XIntV, x::XInt, y::Short)
     end
 end
 
-function _add1!(r::XIntV, x::XInt, y::Limb)
+function _add1!(r::XIntV, x::XSigned, y::Limb)
     xl = len(x)
     rv = vec!(r, xl+1)
     c = MPN.add_1(rv, x=>xl, y)
     @inbounds rv[xl+1] = c
     rl = xl + !iszero(c)
-    _XInt(flipsign(rl, x.x), rv)
+    _XInt(flipsign(rl, _sign(x)), rv)
 end
 
-function _sub1!(r::XIntV, x::XInt, y::Limb)
-    xz = x.x
-    xl, xv = lenvec(x)
+function _sub1!(r::XIntV, x::XSigned, y::Limb)
+    xl = len(x)
+    # we know that abs(x) > y, as y comes from a SLimb, whose absolute value
+    # is < |typemmin(SLimb)| == limb1min (upper bit of y is not set)
     if xl == 1
-        rv1, c = Base.sub_with_overflow(@inbounds(xv[1]), y)
-        if c
-            xz = -xz
-            rv1 = -rv1
-        end
-        XInt!(r, rv1, xz)
-    elseif xl == 2
-        rv1, c = Base.sub_with_overflow(@inbounds(xv[1]), y)
-        rv2 = @inbounds(xv[2]) - c
-        if iszero(rv2)
-            XInt!(r, rv1, xz)
-        else
-            _XInt(xz, assign!(r, rv1, rv2))
-        end
+        xv = vec(x)
+        # xv[1] >= limb1min by specification
+        rv1 = @inbounds xv[1] - y
+        XInt!(r, rv1, _sign(x))
     else
-        # if xl > 2, we see that x-y can't be an immediate integer
+        # if xl > 1, we see that x-y can't be an immediate integer
         rv = vec!(r, xl)
         MPN.sub_1(rv, x=>xl, y)
         rl = xl-iszero(@inbounds rv[xl])
-        _XInt(flipsign(rl, x.x), rv)
+        _XInt(flipsign(rl, _sign(x)), rv)
     end
 end
 
-is_short(::ShortMax) = true
+_widen(x::XSigned) = widen(short(x))
+_promote(x::XInt) = x
+_promote(x::BitInteger) = Static(x)
 
-short(x::ULimbMax) = x % Limb
-short(x::SLimbMax) = x % SLimb
-short(x::XInt) = x.x
+@inline add!(r::XIntV, x, y) = add!(r, _promote(x), _promote(y))
 
-_widen(x::Union{SLimbMax,ULimbMax}) = x % SLimbW
-_widen(x::XInt) = widen(x.x)
-
-@inline function add!(r::XIntV, x::Union{XInt,ShortMax}, y::Union{XInt,ShortMax})
+@inline function add!(r::XIntV, x::XSigned, y::XSigned)
     xshort = is_short(x)
     yshort = is_short(y)
     if xshort & yshort
         XInt!(r, _widen(x) + _widen(y))
     elseif xshort
-        iszero(x) ? y::XInt : add1!(r, y, short(x))
+        iszero(x) ? XInt(y) : add1!(r, y, short(x))
     elseif yshort
-        iszero(y) ? x::XInt : add1!(r, x, short(y))
+        iszero(y) ? XInt(x) : add1!(r, x, short(y))
     else
         addbig!(r, x, y)
     end
@@ -185,29 +173,34 @@ end
 
 # NOTE: this is still unfortunately roughly 2x slower than MPZ.add! for BigInt
 # we recover a lot of perfs if we inline instead, but that's a big function...
-@noinline function addbig!(r::XIntV, x::XInt, y::XInt)
-    xl, yl = abs(x.x), abs(y.x)
+@inline function addbig!(r::XIntV, x::XSigned, y::XSigned)
+    xl, xv = lenvec(x)
+    yl, yv = lenvec(y)
+    xz, yz = _sign(x), _sign(y)
     if xl < yl
-        x, y = y, x
-        xl, yl = yl, xl
+        # we don't just exchange the variables within the main function to
+        # avoid type-unstability
+        addbig!(r, yl, yv, yz, xl, xv, xz)
+    else
+        addbig!(r, xl, xv, xz, yl, yv, yz)
     end
-    xz, yz = x.x, y.x
-    samesign = signbit(xz) == signbit(yz)
-    if samesign
+end
+
+@noinline function addbig!(r::XIntV, xl, xv, xz, yl, yv, yz)
+    if xz == yz
         rv = vec!(r, xl+1)
-        c = MPN.add(rv, x=>xl, y=>yl) # c ∈ (0, 1)
+        c = MPN.add(rv, xv=>xl, yv=>yl) # c ∈ (0, 1)
         @inbounds rv[xl+1] = c
         _XInt(flipsign(xl + c % SLimb, xz), rv)
     elseif xl >= yl+2 # >= 3
         # we are sure that the result will have length xl or xl-1
         rv = vec!(r, xl)
-        MPN.sub(rv, x=>xl, y=>yl)
+        MPN.sub(rv, xv=>xl, yv=>yl)
         rl = xl - iszero(@inbounds rv[xl])
         _XInt(flipsign(rl, xz), rv)
     else
-        xv = vec(x)
-        yv = vec(y)
         local xvl, yvl
+        flip = false
         if xl == yl
             # same length, need to compare the content; we could use:
             # MPN.cmp(x=>xl, y=>yl) % Int
@@ -217,10 +210,7 @@ end
                 yvl = @inbounds yv[xl]
                 if xvl != yvl
                     if xvl < yvl
-                        x, y = y, x
-                        xvl, yvl = yvl, xvl
-                        xv, yv = yv, xv
-                        xz = -xz
+                        flip = true
                     end
                     break
                 end
@@ -229,85 +219,85 @@ end
             if xl == 0
                 return _XInt(0)
             elseif xl == 1
-                return XInt!(r, xvl-yvl, xz)
+                if flip
+                    return XInt!(r, yvl-xvl, yz)
+                else
+                    return XInt!(r, xvl-yvl, xz)
+                end
             end
             yl = xl
         else # xl == yl+1
             xvl = @inbounds xv[xl]
             yvl = zero(Limb)
         end
-        # here, xvl > yvl && xl >= 2
-        rvl = xvl - yvl # value of rv[xl] "so far"
-        @inbounds if rvl == 1
-            rv1, c = Base.sub_with_overflow(xv[1], yv[1])
-            if c && fits(rv1) # above limbs could cancel out, check if result is immediate
-                i = 2
-                local ri::Limb
-                while i < xl
-                    ri, c2 = Base.sub_with_overflow(xv[i], yv[i])
-                    ri, c = ri-c,
-                            c2 | c & iszero(ri)
-                    iszero(ri) || break
-                    # at this point (ri==0), we can see that c has the same value as c2,
-                    # but letting c = c2 above is not enough, as we re-use c later for
-                    # the "real" computation, so it must be set according to the general
-                    # case
-                    i += 1
-                end
-                # i == xl || ri != 0
-                if i == xl && c
-                    return _XInt(flipsign(rv1 % SLimb, xz)) # we know that rv1 fits
-                else
-                    rv = vec!(r, xl)
-                    rv[1] = rv1
-                    fill!(@view(rv[2:i-1]), zero(Limb))
-                    if i == xl # !c, as the case c==true was handled above
-                        rv[xl] = rvl
-                        rl = xl
-                    else
-                        rv[i] = ri
-                        # we would like to use MPN.sub_n, but we can't pass to it
-                        # a pre-existing carry
-                        for i=i+1:xl-1
-                            ri, c2 = Base.sub_with_overflow(xv[i], yv[i])
-                            rv[i] = ri-c
-                            c = c2 | (c & iszero(ri))
-                        end
-                        rv[xl] = rvl-c
-                        rl = normalize(rv, xl)
-                    end
-                    return _XInt(flipsign(rl, xz), rv)
-                end
-            end
+        if flip
+            _addbig!(r, yl, yv, yz, yvl, xl, xv, xz, xvl)
+        else
+            _addbig!(r, xl, xv, xz, xvl, yl, yv, yz, yvl)
         end
-        @assert xl == yl || xl == yl+1
-        rv = vec!(r, xl)
-        c = MPN.sub_n(rv, x, y, yl)
-        if xl > yl
-            rv[xl] = @inbounds(xv[xl]-c)
-        end
-        rl = normalize(rv, xl)
-        _XInt(flipsign(rl, xz), rv)
     end
 end
 
-add!(x::XInt, y::XInt) = add!(x, x, y)
+@inline function _addbig!(r, xl, xv, xz, xvl, yl, yv, yz, yvl)
+    # here, xvl > yvl && xl >= 2
+    rvl = xvl - yvl # value of rv[xl] "so far"
+    @inbounds if rvl == 1
+        rv1, c = Base.sub_with_overflow(xv[1], yv[1])
+        if c && fits(rv1) # above limbs could cancel out, check if result is immediate
+            i = 2
+            local ri::Limb
+            while i < xl
+                ri, c2 = Base.sub_with_overflow(xv[i], yv[i])
+                ri, c = ri-c,
+                        c2 | c & iszero(ri)
+                iszero(ri) || break
+                # at this point (ri==0), we can see that c has the same value as c2,
+                # but letting c = c2 above is not enough, as we re-use c later for
+                # the "real" computation, so it must be set according to the general
+                # case
+                i += 1
+            end
+            # i == xl || ri != 0
+            if i == xl && c
+                return _XInt(flipsign(rv1 % SLimb, xz)) # we know that rv1 fits
+            else
+                rv = vec!(r, xl)
+                rv[1] = rv1
+                fill!(@view(rv[2:i-1]), zero(Limb))
+                if i == xl # !c, as the case c==true was handled above
+                    rv[xl] = rvl
+                    rl = xl
+                else
+                    rv[i] = ri
+                    # we would like to use native MPN.sub_n, but we can't pass to it
+                    # a pre-existing carry
+                    c = MPN.sub_n(rv, xv, yv, i+1:xl-1, c)
+                    rv[xl] = rvl-c
+                    rl = normalize(rv, xl)
+                end
+                return _XInt(flipsign(rl, xz), rv)
+            end
+        end
+    end
+    @assert xl == yl || xl == yl+1
+    rv = vec!(r, xl)
+    c = MPN.sub_n(rv, xv, yv, yl)
+    if xl > yl
+        rv[xl] = @inbounds(xv[xl]-c)
+    end
+    rl = normalize(rv, xl)
+    _XInt(flipsign(rl, xz), rv)
+end
+
+add!(x::XInt, y) = add!(x, x, _promote(y))
 
 neg!(x::XInt) = _XInt(-x.x, x.v)
 
-sub!(r::XIntV, x::Union{XInt,ShortMax}, y::XInt) = add!(r, x, neg!(y))
-sub!(r::XIntV, x::XInt, y::ULimbMax) = neg!(add!(r, neg!(x), y))
+sub!(r::XIntV, x, y::XInt) = add!(r, _promote(x), neg!(y))
+# we don't implement neg!(s::Static), as s might contain unsigned, or typemin(SLimb)
+sub!(r::XIntV, x::XInt, y::BitInteger) = neg!(add!(r, neg!(x), Static(y)))
 
-function sub!(r::XIntV, x::XInt, y::SLimbMax)
-    yy = y % SLimb
-    if yy !== typemin(SLimb)
-        add!(r, x, -yy)
-    else
-        add!(r, x, yy % Limb)
-    end
-end
-
-sub!(x::XInt, y::XInt) = sub!(x, x, y)
+sub!(x::XInt, y) = sub!(x, x, _promote(y))
 
 # set r to ~x == -(x+1)
 com!(r::XIntV, x::XInt=r) =

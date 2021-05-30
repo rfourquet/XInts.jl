@@ -7,6 +7,7 @@ import Base.GMP: isneg, ispos
 import Base.GMP.MPZ
 import Base.MPFR
 using Base.GC: @preserve
+using Base: BitInteger
 import Base: +, -, *, ^, &, |, ==, /, ~, <<, >>, >>>, <, <=,
              string, widen, hastypemax, tryparse_internal,
              unsafe_trunc, trunc, mod, rem, iseven, isodd, gcd, lcm, xor, div, fld, cld,
@@ -45,6 +46,8 @@ if BITS_PER_LIMB == 32
 
     @inline _divLimb(n) = n >>> 5
     @inline _modLimb(n) = n & 31
+    @inline _divByteLimb(n) = n >>> 2
+    @inline _modByteLimb(n) = n & 3
 elseif BITS_PER_LIMB == 64
     const SLimb = Int64
     const SLimbW = Int128
@@ -52,6 +55,8 @@ elseif BITS_PER_LIMB == 64
 
     @inline _divLimb(n) = n >>> 6
     @inline _modLimb(n) = n & 63
+    @inline _divByteLimb(n) = n >>> 3
+    @inline _modByteLimb(n) = n & 7
 else
     error()
 end
@@ -65,7 +70,60 @@ const limb1min = slimbmin % Limb # typically 0x8000000000000000
 const Short = Union{Limb,SLimb}
 const ShortMax = Union{ULimbMax,SLimbMax}
 
-struct XInt <: Signed
+abstract type XSigned <: Signed end
+
+# T must be a "bit integer", assumed for efficiency, and also sizeof
+struct Static{T<:Integer} <: XSigned
+    x::T
+end
+
+# we could re-use Static for this, but Static <: Number already has getindex defined,
+# so we clearly separate the two concepts
+struct SVec{U<:Unsigned}
+    u::U
+end
+
+is_short(s::Static) = sizeof(s.x) < sizeof(Limb) ? true : fits(s.x)
+short(s::Static) = s.x % SLimb
+
+vec(s::Static{<:Signed}) = SVec(unsigned(abs(s.x)))
+vec(s::Static{<:Unsigned}) = SVec(s.x)
+
+function lenvec(s::Static)
+    # @assert !is_short(s)
+    v = vec(s)
+    lz = leading_zeros(v.u) >>> 3 # count leading full zero bytes
+    usedbytes = sizeof(v.u)-lz
+    _divByteLimb(usedbytes - 1) + 1, v
+end
+
+len(s::Static) = lenvec(s)[1]
+vec(s::Static) = lenvec(s)[2]
+
+iszero(s::Static) = iszero(s.x)
+ispos(s::Static) = s.x > 0
+signbit(s::Static) = s.x < 0
+_sign(s::Static) = ispos(s) ? SLimb(1) : SLimb(-1)
+
+function Base.getindex(s::SVec, i::Integer)
+    # getindex is called only when sizeof(x) >= sizeof(Limb)
+    if sizeof(s.u) == sizeof(Limb)
+        # we always assume @inbounds
+        s.u % Limb
+    else
+        (s.u >> ((i-1)*BITS_PER_LIMB)) % Limb
+    end
+end
+
+Base.show(io::IO, s::Static) =
+    if is_short(s)
+        print(io, "Static($(s.x))")
+    else
+        sl, sv = lenvec(s)
+        print(io, "Static(", [sv[i] for i=1:sl], ")")
+    end
+
+struct XInt <: XSigned
     x::SLimb # immediate integer or sign+length
     v::Union{Nothing,Vector{Limb}}
 
@@ -100,6 +158,7 @@ end
 
 
 XInt(x::XInt) = x
+XInt(x::Static) = XInt(x.x)
 
 # reducing version of XInt(::XInt)
 _XInt(x::XInt) =
@@ -114,12 +173,15 @@ _XInt(u::Limb) = _XInt(u % SLimb) # no check done that u fits
 is_short(x::XInt) = x.v === nothing
 is_short(x::XInt, y::XInt) = x.v === nothing === y.v
 
+short(x::XInt) = x.x
+len(x::XInt) = abs(x.x)
+
 include("MPN.jl")
 include("mutants.jl")
 
 MPN.ptr(x::XInt) = pointer(x.v::Vector{Limb})
 MPN.len(x::XInt) = abs(x.x) % MPN.Size
-len(x::XInt) = abs(x.x)
+
 
 function _XInt(z::BigInt, extra::SLimb=0)
     # @assert extra >= 0
@@ -139,6 +201,8 @@ XInt(z::BigInt) = _XInt(z)
 
 fits(z::Limb) = !Core.is_top_bit_set(z) # z < limb1min
 fits(z::SLimb) = z !== slimbmin
+fits(z::Signed) = slimbmin < z <= slimbmax
+fits(z::Unsigned) = z <= slimbmax
 
 XInt(z::Limb) = XInt!(nothing, z)
 
@@ -306,7 +370,8 @@ ispos(x::XInt) = x.x > 0
 ispos(x::XInt, y::XInt) = x.x > 0 && y.x > 0
 isneg(x::XInt) = x.x < 0
 signbit(x::XInt) = x.x < 0
-sign(x::XInt) = XInt(sign(x.x))
+sign(x::XInt) = _XInt(sign(x.x))
+_sign(x::XInt) = sign(x.x)
 iszero(x::XInt) = iszero(x.x)
 isone(x::XInt) = is_short(x) ? isone(x.x) : isone(@inbounds x.v[1])
 # TODO: remove is_short check when we guarantee that short integers are always stored in x.x
@@ -374,12 +439,12 @@ end
 
 # we put @inline, as it seems these methods don't by themselves,
 # maybe because add! is already inline and too big
-@inline +(x::XInt,     y::XInt)     = add!(nothing, x, y)
-@inline +(x::XInt,     y::ShortMax) = add!(nothing, x, y)
-@inline +(x::ShortMax, y::XInt)     = add!(nothing, x, y)
-@inline -(x::XInt,     y::XInt)     = sub!(nothing, x, y)
-@inline -(x::XInt,     y::ShortMax) = sub!(nothing, x, y)
-@inline -(x::ShortMax, y::XInt)     = sub!(nothing, x, y)
+@inline +(x::XInt,       y::XInt)       = add!(nothing, x, y)
+@inline +(x::XInt,       y::BitInteger) = add!(nothing, x, y)
+@inline +(x::BitInteger, y::XInt)       = add!(nothing, x, y)
+@inline -(x::XInt,       y::XInt)       = sub!(nothing, x, y)
+@inline -(x::XInt,       y::BitInteger) = sub!(nothing, x, y)
+@inline -(x::BitInteger, y::XInt)       = sub!(nothing, x, y)
 
 @inline +(x::XInt, y::Integer) = add!(_XInt(y, 1), x)
 @inline +(x::Integer, y::XInt) = add!(_XInt(x, 1), y)

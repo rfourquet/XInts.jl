@@ -491,9 +491,14 @@ end
 
     @testset "$op(::XInt, ::$T) / $op(::$T, ::XInt)" for
         op in (+, -, *, /, cmp, <, <=, >, >=, ==, flipsign, gcd, gcdx, binomial),
-        T in [Base.uniontypes(CulongMax); Base.uniontypes(ClongMax);
-             op ∈ (cmp, ) ? Base.uniontypes(CdoubleMax) : []]
-
+        T in [Base.BitInteger_types...;
+              if op ∈ (cmp, )
+                  Base.uniontypes(CdoubleMax)
+              elseif op ∈ (+, -)
+                  [Int256, UInt256, BigInt]
+              else
+                  []
+              end]
         as, xs = make_values(T)
         for a = as, y = xs, z = (-y, y), x = (vint(z),)
             op === binomial && !all(-1000 .<= [a, z] .<= 1000) && continue
