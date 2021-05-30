@@ -87,14 +87,18 @@ end
 @inline function add(rp::Vector, x, y)
     xl, xv = lenvec(x)
     yl, yv = lenvec(y)
-    if isheap(xv, yv)
+    # native MPN is not really faster than non-inlined Julia version here,
+    # but if we inline Julia version (like we do now), there is no reason
+    # to use MPN version
+    use_MPN = false
+    if use_MPN && isheap(xv, yv)
         @preserve rp xv yv add(ptr(rp), ptr(xv), xl, ptr(yv), yl) % Bool
     else
         add(rp, xv, xl, yv, yl)
     end
 end
 
-function add(rv, xv, xl, yv, yl)
+@inline function add(rv, xv, xl, yv, yl)
     # @assert xl >= yl
     c = false
     for i=1:yl
