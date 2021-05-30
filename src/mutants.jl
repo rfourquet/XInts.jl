@@ -9,13 +9,16 @@ vec!(x::XInt, n::Integer) =
     if is_short(x)
         _vec(n)
     else
-        xv = vec(x)
-        len = length(xv)
-        if n > len
-            Base._growend!(xv, n-len)
-        end
-        xv
+        vec!(vec(x), n)
     end
+
+function vec!(xv::Vector, n::Integer)
+    len = length(xv)
+    if n > len
+        Base._growend!(xv, n-len)
+    end
+    xv
+end
 
 vec!(::Nothing, n::Integer) = _vec(n)
 
@@ -170,6 +173,28 @@ _promote(x::BitInteger) = Static(x)
     end
 end
 
+# fast path for sum
+# this allocate in x even if x == 0
+# (i.e. this doesn't return the other arg y in this case, so no aliasing)
+@inline function addbig_positive!(x::XInt, y::XInt)
+    if iszero(x.x)
+        yl, yv = lenvec(y)
+        xv = _vec(yl+2) # +1 for later invocation which requests it, and +1 for margin
+        unsafe_copyto!(xv, 1, yv, 1, yl)
+        return _XInt(yl, xv)
+    end
+    xl, xv = lenvec(x)
+    yl, yv = lenvec(y)
+    rv = xv # result in x, even if we have to swap the arguments
+    if xl < yl
+        xl, yl = yl, xl
+        xv, yv = yv, xv
+    end
+    rv = vec!(rv, xl+1)
+    c = MPN.add(rv, xv=>xl, yv=>yl) # c ∈ (0, 1)
+    @inbounds rv[xl+1] = c
+    _XInt(xl + c % SLimb, rv)
+end
 
 # NOTE: this is still unfortunately roughly 2x slower than MPZ.add! for BigInt
 # we recover a lot of perfs if we inline instead, but that's a big function...

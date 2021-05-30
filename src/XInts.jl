@@ -455,16 +455,31 @@ end
 @inline (|)(x::XInt, y::XInt) = ior!(nothing, x, y)
 
 function sum(arr::AbstractArray{XInt})
-    s = buffer = _XInt(0)
-    # can't use foldl, as updating buffer in the higher function
-    # has overhead, even when using a Ref
+    sp = _XInt(0) # > 0
+    sn = _XInt(0) # < 0
+    s0 = zero(Int128)
+
     for x = arr
-        s = add!(buffer, s, x)
-        if !is_short(s) && s !== x
-            buffer = s
+        if is_short(x)
+            s0 += short(x)
+        elseif ispos(x)
+            sp = addbig_positive!(sp, x)
+        else
+            sn = addbig_positive!(sn, x)
         end
     end
-    s
+    if !iszero(sp)
+        if !iszero(sn)
+            s = addbig!(sp, sp, neg!(sn))
+            add!(s, s0)
+        else
+            add!(sp, s0)
+        end
+    elseif !iszero(sn)
+        add!(neg!(sn), s0)
+    else
+        XInt(s0)
+    end
 end
 
 for (r, f!) in ((RoundToZero, :tdiv_q!),

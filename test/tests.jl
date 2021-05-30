@@ -2,7 +2,7 @@ using XInts
 using XInts: SLimb, slimbmin, slimbmax, Limb, ClongMax, CulongMax, CdoubleMax, BITS_PER_LIMB,
              add!, sub!, com!, lshift!, rshift!, and!, ior!, SLimbW, LimbW, vec, is_short
 using BitIntegers
-import Random
+using Random
 
 function validate(x::XInt)
     @test x isa XInt
@@ -266,15 +266,23 @@ end
         xs = BigInt.(rand(Int8, rand(1:10)))
         testsum(xs)
         append!(xs, rand(SLimb, rand(1:10)))
-        testsum(xs)
+        testsum(shuffle!(xs))
         append!(xs, rand(SLimbW, rand(1:10)))
-        testsum(xs)
+        testsum(shuffle!(xs))
         append!(xs, rand(-big(2)^200:big(2)^200, rand(1:10)))
-        testsum(xs)
+        testsum(shuffle!(xs))
         # the first number x is a non-short, so when added with the initial
         # 0 in sum, it will return x itself: we must not mutate it later on
         xs = rand(-big(2)^65:big(2)^65, 10)
         testsum(xs)
+        # test only big positive or negative numbers
+        axs = abs.(xs)
+        testsum(axs)
+        testsum(.-axs)
+        # with some shorts
+        append!(axs, rand(slimbmin+1:slimbmax, 10))
+        testsum(axs)
+        testsum(.-axs)
     end
 end
 
