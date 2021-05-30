@@ -69,10 +69,11 @@ const limb1min = slimbmin % Limb # typically 0x8000000000000000
 
 const Short = Union{Limb,SLimb}
 const ShortMax = Union{ULimbMax,SLimbMax}
+const BaseInteger = Union{BitInteger,BigInt}
 
 abstract type XSigned <: Signed end
 
-# T must be a "bit integer", assumed for efficiency, and also sizeof
+# T must be a "bit integer", assumed for efficiency, and also sizeof, or BigInt
 struct Static{T<:Integer} <: XSigned
     x::T
 end
@@ -84,10 +85,21 @@ struct SVec{U<:Unsigned}
 end
 
 is_short(s::Static) = sizeof(s.x) < sizeof(Limb) ? true : fits(s.x)
+is_short(s::Static{BigInt}) =
+         GC.@preserve s s.x.size == 0 ||
+         abs(s.x.size) == 1 && fits(unsafe_load(s.x.d))
+
 short(s::Static) = s.x % SLimb
+short(s::Static{BigInt}) =
+    GC.@preserve s if s.x.size == 0
+        SLimb(0)
+    else
+        flipsign(unsafe_load(s.x.d), s.x.size)
+    end
 
 vec(s::Static{<:Signed}) = SVec(unsigned(abs(s.x)))
 vec(s::Static{<:Unsigned}) = SVec(s.x)
+vec(s::Static{BigInt}) = GC.@preserve s unsafe_wrap(Vector{Limb}, s.x.d, abs(s.x.size))
 
 function lenvec(s::Static)
     # @assert !is_short(s)
@@ -99,10 +111,12 @@ end
 
 len(s::Static) = lenvec(s)[1]
 vec(s::Static) = lenvec(s)[2]
+len(s::Static{BigInt}) = abs(s.x.size) % SLimb
+lenvec(s::Static{BigInt}) = len(s), vec(s)
 
 iszero(s::Static) = iszero(s.x)
-ispos(s::Static) = s.x > 0
-signbit(s::Static) = s.x < 0
+ispos(s::Static) = !signbit(s.x) & !iszero(s.x)
+signbit(s::Static) = signbit(s.x)
 _sign(s::Static) = ispos(s) ? SLimb(1) : SLimb(-1)
 
 function Base.getindex(s::SVec, i::Integer)
@@ -441,11 +455,11 @@ end
 # we put @inline, as it seems these methods don't by themselves,
 # maybe because add! is already inline and too big
 @inline +(x::XInt,       y::XInt)       = add!(nothing, x, y)
-@inline +(x::XInt,       y::BitInteger) = add!(nothing, x, y)
-@inline +(x::BitInteger, y::XInt)       = add!(nothing, x, y)
+@inline +(x::XInt,       y::BaseInteger) = add!(nothing, x, y)
+@inline +(x::BaseInteger, y::XInt)       = add!(nothing, x, y)
 @inline -(x::XInt,       y::XInt)       = sub!(nothing, x, y)
-@inline -(x::XInt,       y::BitInteger) = sub!(nothing, x, y)
-@inline -(x::BitInteger, y::XInt)       = sub!(nothing, x, y)
+@inline -(x::XInt,       y::BaseInteger) = sub!(nothing, x, y)
+@inline -(x::BaseInteger, y::XInt)       = sub!(nothing, x, y)
 
 @inline +(x::XInt, y::Integer) = add!(_XInt(y, 1), x)
 @inline +(x::Integer, y::XInt) = add!(_XInt(x, 1), y)

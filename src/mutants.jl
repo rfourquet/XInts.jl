@@ -155,7 +155,7 @@ end
 
 _widen(x::XSigned) = widen(short(x))
 _promote(x::XInt) = x
-_promote(x::BitInteger) = Static(x)
+_promote(x::BaseInteger) = Static(x)
 
 @inline add!(r::XIntV, x, y) = add!(r, _promote(x), _promote(y))
 
@@ -320,7 +320,7 @@ neg!(x::XInt) = _XInt(-x.x, x.v)
 
 sub!(r::XIntV, x, y::XInt) = add!(r, _promote(x), neg!(y))
 # we don't implement neg!(s::Static), as s might contain unsigned, or typemin(SLimb)
-sub!(r::XIntV, x::XInt, y::BitInteger) = neg!(add!(r, neg!(x), Static(y)))
+sub!(r::XIntV, x::XInt, y::BaseInteger) = neg!(add!(r, neg!(x), Static(y)))
 
 sub!(x::XInt, y) = sub!(x, x, _promote(y))
 
