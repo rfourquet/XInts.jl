@@ -252,12 +252,29 @@ end
     end
 
     @testset "sum" begin
-        xs = BigInt[rand(Int8, rand(1:10)); rand(SLimb, rand(1:10))]
-        @test sum(xs) == sum(XInt.(xs))
+        function testsum(bs)
+            bs0 = deepcopy(bs)
+            xs = XInt.(bs)
+            xs0 = deepcopy(xs)
+            sumbs = sum(bs)
+            sumxs = sum(xs)
+            # we test that sum didn't mess up with internal mutation
+            @test is_short(sumxs) || all(x -> x !== sumxs, xs)
+            @test xs == xs0 == bs0
+            @test sumbs == sumxs
+        end
+        xs = BigInt.(rand(Int8, rand(1:10)))
+        testsum(xs)
+        append!(xs, rand(SLimb, rand(1:10)))
+        testsum(xs)
         append!(xs, rand(SLimbW, rand(1:10)))
-        @test sum(xs) == sum(XInt.(xs))
-        append!(xs, rand(-big(2)^200:big(2)^200))
-        @test sum(xs) == sum(XInt.(xs))
+        testsum(xs)
+        append!(xs, rand(-big(2)^200:big(2)^200, rand(1:10)))
+        testsum(xs)
+        # the first number x is a non-short, so when added with the initial
+        # 0 in sum, it will return x itself: we must not mutate it later on
+        xs = rand(-big(2)^65:big(2)^65, 10)
+        testsum(xs)
     end
 end
 

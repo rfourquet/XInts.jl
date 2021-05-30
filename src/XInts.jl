@@ -460,7 +460,7 @@ function sum(arr::AbstractArray{XInt})
     # has overhead, even when using a Ref
     for x = arr
         s = add!(buffer, s, x)
-        if !is_short(s)
+        if !is_short(s) && s !== x
             buffer = s
         end
     end
