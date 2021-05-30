@@ -436,6 +436,7 @@ for (fJ, fC) in ((:*, :mul),
 end
 
 # TODO: 3+ args specializations for some ops, like in gmp.jl
+# (already done for +)
 
 # we put @inline, as it seems these methods don't by themselves,
 # maybe because add! is already inline and too big
@@ -454,7 +455,10 @@ end
 @inline (&)(x::XInt, y::XInt) = and!(nothing, x, y)
 @inline (|)(x::XInt, y::XInt) = ior!(nothing, x, y)
 
-function sum(arr::AbstractArray{XInt})
+
++(x::XInt, y::XInt, z::XInt, r::XInt...) = sum(tuple(x, y, z, r...))
+
+function sum(arr::Union{AbstractArray{XInt},Tuple{Vararg{XInt}}})
     sp = _XInt(0) # > 0
     sn = _XInt(0) # < 0
     s0 = zero(Int128)

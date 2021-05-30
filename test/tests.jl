@@ -283,6 +283,11 @@ end
         append!(axs, rand(slimbmin+1:slimbmax, 10))
         testsum(axs)
         testsum(.-axs)
+
+        # tuples
+        z1, z2, z3, z4 = zs = XInt.(xs[1:4])
+        @test sum(zs) == sum(Tuple(zs))
+        @test sum(zs) == z1 + z2 + z3 + z4
     end
 end
 
