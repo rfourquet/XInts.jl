@@ -520,14 +520,12 @@ end
     end
 
     @testset "$op(::XInt, ::$T) / $op(::$T, ::XInt)" for
-        op in (+, -, *, /, cmp, <, <=, >, >=, ==, flipsign, gcd, gcdx, binomial),
-        T in [Base.BitInteger_types...;
-              if op ∈ (cmp, )
-                  Base.uniontypes(CdoubleMax)
-              elseif op ∈ (+, -)
-                  [Int256, UInt256, BigInt]
-              else
+        op in (+, -, *, /, cmp, <, <=, >, >=, ==, !=, flipsign, gcd, gcdx, binomial),
+        T in [Base.BitInteger_types...; BigInt; Int256; UInt256;
+              if op ∈ (gcd, gcdx, binomial)
                   []
+              else
+                  [Base.uniontypes(CdoubleMax); BigFloat]
               end]
         as, xs = make_values(T)
         for a = as, y = xs, z = (-y, y), x = (vint(z),)
@@ -537,7 +535,13 @@ end
                           Any[(op(a, x), op(a, z)),
                               (op(x, a), op(z, a))])
 
-                if s isa BigInt
+                if op === flipsign
+                    if r isa XInt
+                        @test s isa BigInt
+                    else
+                        @test typeof(s) == typeof(r)
+                    end
+                elseif s isa BigInt
                     @test validate(r) isa XInt
                 elseif op === gcdx
                     @test r isa Tuple{XInt,XInt,XInt}
@@ -545,7 +549,9 @@ end
                 else
                     @test typeof(r) == typeof(s)
                 end
-                @test isequal(r, s) # not `==` for NaN
+                @test isequal(r, s) || iszero(r) && iszero(s) && T == BigFloat
+                # not `==` for NaN
+                # TODO: fix the 0.0 vs -0.0 discrepancy with BigFloat?
             end
         end
     end

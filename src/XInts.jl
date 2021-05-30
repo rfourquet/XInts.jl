@@ -318,6 +318,7 @@ hastypemax(::Type{XInt}) = false
 promote_rule(::Type{XInt}, ::Type{<:Integer}) = XInt
 promote_rule(::Type{XInt}, ::Type{BigInt}) = XInt
 promote_rule(::Type{BigInt}, ::Type{XInt}) = XInt
+promote_rule(::Type{XInt}, ::Type{<:AbstractFloat}) = BigFloat
 
 tryparse_internal(::Type{XInt}, s::AbstractString, startpos::Int, endpos::Int,
                   base_::Integer, raise::Bool) =
@@ -561,7 +562,9 @@ count_ones(x::XInt) =
 
 cmp(x::XInt, y::XInt) = is_short(x, y) ? cmp(x.x, y.x) : @bigint () x y cmp(x, y)
 cmp(x::XInt, y::Integer) = is_short(x) ? cmp(x.x, y) : @bigint () x cmp(x, y)
+cmp(x::XInt, y::BigInt)  = is_short(x) ? cmp(x.x, y) : @bigint () x cmp(x, y) # disambiguation
 cmp(y::Integer, x::XInt) = -cmp(x, y)
+cmp(y::BigInt, x::XInt)  = -cmp(x, y) # disambiguation
 cmp(x::XInt, y::CdoubleMax) = is_short(x) ? cmp(x.x, y) : @bigint () x cmp(x, y)
 cmp(y::CdoubleMax, x::XInt) = -cmp(x, y)
 
@@ -591,13 +594,18 @@ end
 
 <=(x::XInt, y::XInt) = cmp(x,y) <= 0
 <=(x::XInt, i::Integer) = cmp(x,i) <= 0
+<=(x::XInt, i::BigInt)  = cmp(x,i) <= 0 # disambiguation
 <=(i::Integer, x::XInt) = cmp(x,i) >= 0
+<=(i::BigInt, x::XInt)  = cmp(x,i) >= 0 # disambiguation
 <=(x::XInt, f::CdoubleMax) = isnan(f) ? false : cmp(x,f) <= 0
 <=(f::CdoubleMax, x::XInt) = isnan(f) ? false : cmp(x,f) >= 0
 
 <(x::XInt, y::XInt) = cmp(x,y) < 0
 <(x::XInt, i::Integer) = cmp(x,i) < 0
+<(x::XInt, i::BigInt)  = cmp(x,i) < 0 # disambiguation
 <(i::Integer, x::XInt) = cmp(x,i) > 0
+<(i::BigInt, x::XInt)  = cmp(x,i) > 0 # disambiguation
+
 <(x::XInt, f::CdoubleMax) = isnan(f) ? false : cmp(x,f) < 0
 <(f::CdoubleMax, x::XInt) = isnan(f) ? false : cmp(x,f) > 0
 
