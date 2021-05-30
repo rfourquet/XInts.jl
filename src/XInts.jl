@@ -456,6 +456,9 @@ end
 @inline (|)(x::XInt, y::XInt) = ior!(nothing, x, y)
 
 
+# it doesn't seem worthwhile to define 4+ args specific + methods,
+# the vararg one is better
+@inline +(x::XInt, y::XInt, z::XInt) = add!((x+y), z)
 +(x::XInt, y::XInt, z::XInt, r::XInt...) = sum(tuple(x, y, z, r...))
 
 function sum(arr::Union{AbstractArray{XInt},Tuple{Vararg{XInt}}})
