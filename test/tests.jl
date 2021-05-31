@@ -1,6 +1,6 @@
 using XInts
 using XInts: SLimb, slimbmin, slimbmax, Limb, ClongMax, CulongMax, CdoubleMax, BITS_PER_LIMB,
-             add!, sub!, com!, lshift!, rshift!, and!, ior!, SLimbW, LimbW, vec, is_short
+             add!, sub!, mul!, com!, lshift!, rshift!, and!, ior!, SLimbW, LimbW, vec, is_short
 using BitIntegers
 using Random
 
@@ -370,6 +370,7 @@ end
 opmap(x) = x
 opmap(::typeof(add!)) = +
 opmap(::typeof(sub!)) = -
+opmap(::typeof(mul!)) = *
 opmap(::typeof(com!)) = ~
 opmap(::typeof(lshift!)) = <<
 opmap(::typeof(rshift!)) = >>
@@ -417,6 +418,14 @@ function testop2(op, x, y)
             if !is_short(r)
                 @test vec(rtmp) === vec(tmp) || !is_short(aa) && vec(rtmp) === vec(aa) ||
                     vec(rtmp) === vec(bb)
+                aa2 = XInts._copy(aa)
+                # test aliasing works between the source(s) and destination
+                if aa != bb
+                    rtmp = validate(op(aa2, aa2, bb))
+                else
+                    rtmp = validate(op(aa2, aa2, aa2))
+                end
+                @test rtmp == r
             end
             tmp = XInts._XInt(0)
             @test validate(op(tmp, vint(a), vint(b))) == r
@@ -475,7 +484,7 @@ end
     @testset "$op(::XInt, ::XInt)" for op = (+, -, *, mod, rem, gcd, gcdx, lcm, &, |, xor,
                                              /, div, divrem, fld, cld, invmod,
                                              cmp, <, <=, >, >=, ==, flipsign, binomial,
-                                             add!, sub!, and!, ior!)
+                                             add!, sub!, mul!, and!, ior!)
         for x=xs, y=xs
             iszero(y) && op ∈ (/, mod, rem, div, divrem, fld, cld, invmod) &&
                 continue

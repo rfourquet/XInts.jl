@@ -333,6 +333,8 @@ _widen(x::ShortMax) = SLimbW(x)
 _sign(x::Limb) = SLimb(1)
 _sign(x::SLimb) = sign(x)
 
+mul!(x::XInt, y::Union{ShortMax,XInt}) = mul!(x, x, y)
+
 @inline function mul!(r::XIntV, x::XInt, y::Union{ShortMax,XInt})
     xshort = is_short(x)
     yshort = is_limb(y)
@@ -355,21 +357,40 @@ function mul1!(r::XIntV, x::XInt, y::Short)
     sz = flipsign(_sign(x), _sign(y))
     xl = len(x)
     rv = vec!(r, xl + 1)
-    high = MPN.mul_1(rv, x, abs(y) % Limb)
+    high = MPN.mul_1(rv, x, abs(y) % Limb) # rv === vec(x) is supported
     @inbounds rv[xl+1] = high
     _XInt(flipsign(xl + !iszero(high), sz), rv)
 end
 
 function mulbig!(r::XIntV, x::XInt, y::XInt)
     # @assert !is_short(x) && !is_short(y)
-    xl, yl = len(x), len(y)
-    if xl < yl
-        x, y = y, x
-        xl, yl = yl, xl
-    end
+    xl, xv = lenvec(x)
+    yl, yv = lenvec(y)
     sz = flipsign(_sign(x), _sign(y))
-    rv = vec!(r, xl+yl)
-    high = MPN.mul(rv, x, y)
+    if xl < yl
+        xl, yl = yl, xl
+        xv, yv = yv, xv
+    end
+
+    tv = rv = vec!(r, xl+yl)
+    # check for aliasing
+    if rv === xv
+        # MPN can't do mpn_mul inplace; rv is already big enough to hold the result,
+        # so copy xv to a temporary, which can be discarded afterwards
+        tv = tmpvec(xl)
+        unsafe_copyto!(tv, 1, xv, 1, xl)
+        xv = tv
+        if rv === yv
+            # assume xl == yl; make yv egal again to xv, the square will be computed
+            yv = xv
+        end
+    elseif rv === yv
+        tv = tmpvec(yl)
+        unsafe_copyto!(tv, 1, yv, 1, yl)
+        yv = tv
+    end
+    high = MPN.mul(rv, xv => xl, yv => yl)
+    tv !== rv && freetmpvec(tv)
     _XInt(flipsign(xl+yl-iszero(high), sz), rv)
 end
 

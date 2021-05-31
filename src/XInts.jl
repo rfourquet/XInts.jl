@@ -275,8 +275,44 @@ end
 
 const tWraps = Wraps[]
 
+mutable struct Buffer
+    vec::Vector{Limb}
+    # TODO: determine whether `used` is really needed; it's to try to work
+    # around the problem mentioned in Julia#17015, that affects also usage
+    # of the @bigint macro, related to GC
+    used::Bool
+
+    Buffer() = new(sizehint!(Limb[], 20), false)
+end
+
+const tBuffer = Buffer[]
+
+function tmpvec(n::Integer)
+    buf = tBuffer[Threads.threadid()]
+    if buf.used
+        # if a previous call failed to be followed by freetmpvec,
+        # or maybe finalizers triggered by GC call tmpvec while the
+        # resource is already in use
+        _vec(n)
+    else
+        v = vec!(buf.vec, n)
+        buf.used = true # after possible allocation above, which might fail
+        v
+    end
+end
+
+function freetmpvec(v::Vector)
+    buf = tBuffer[Threads.threadid()]
+    if v === buf.vec
+        @assert buf.used
+        buf.used = false
+    end
+    nothing
+end
+
 function __init__()
     copy!(tWraps, [Wraps() for _=1:Threads.nthreads()])
+    copy!(tBuffer, [Buffer() for _=1:Threads.nthreads()])
 end
 
 macro bigint(args...)
@@ -454,7 +490,7 @@ end
 
 @inline *(x::XInt, y::XInt)     = mul!(nothing, x, y)
 @inline *(x::XInt, c::ShortMax) = mul!(nothing, x, c)
-@inline *(x::XInt, y::Integer)  = mul!(nothing, x, XInt(y))
+@inline *(x::XInt, y::Integer)  = mul!(_XInt(y, safe_len(x)), x)
 @inline *(x::Integer, y::XInt)  = y * x
 
 @inline (&)(x::XInt, y::XInt) = and!(nothing, x, y)
