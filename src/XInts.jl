@@ -847,7 +847,7 @@ struct SamplerXIntBig{SP<:Sampler{Limb}} <: SamplerXInt
     highsp::SP        # sampler for the highest limb
 end
 
-safe_len(x::XInt) = is_short(x) ? SLimb(iszero(x)) : abs(x.x)
+safe_len(x::XInt) = is_short(x) ? SLimb(!iszero(x)) : abs(x.x)
 
 @noinline function SamplerXIntBig(::Type{RNG}, r1::XInt, r2::XInt) where {RNG<:AbstractRNG}
     m = r2-r1
