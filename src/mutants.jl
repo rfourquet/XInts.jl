@@ -324,6 +324,46 @@ sub!(r::XIntV, x::XInt, y::BitInteger) = neg!(add!(r, neg!(x), Static(y)))
 
 sub!(x::XInt, y) = sub!(x, x, _promote(y))
 
+
+@inline function mul!(r::XIntV, x::XInt, y::XInt)
+    xshort = is_short(x)
+    yshort = is_short(y)
+    if xshort & yshort
+        XInt!(r, _widen(x) * _widen(y))
+    elseif xshort
+        mul1!(r, y, short(x))
+    elseif yshort
+        mul1!(r, x, short(y))
+    else
+        mulbig!(r, x, y)
+    end
+end
+
+function mul1!(r::XIntV, x::XInt, y::SLimb)
+    # @assert !is_short(x) # y can be slimbmin
+    iszero(y) && return XInt(0)
+    isone(y) && return x
+    y == -1 && return neg!(x)
+    sz = flipsign(_sign(x), sign(y))
+    xl = len(x)
+    rv = vec!(r, xl + 1)
+    high = MPN.mul_1(rv, x, abs(y) % Limb)
+    @inbounds rv[xl+1] = high
+    _XInt(flipsign(xl + !iszero(high), sz), rv)
+end
+
+function mulbig!(r::XIntV, x::XInt, y::XInt)
+    xl, yl = len(x), len(y)
+    if xl < yl
+        x, y = y, x
+        xl, yl = yl, xl
+    end
+    sz = flipsign(_sign(x), _sign(y))
+    rv = vec!(r, xl+yl)
+    high = MPN.mul(rv, x, y)
+    _XInt(flipsign(xl+yl-iszero(high), sz), rv)
+end
+
 # set r to ~x == -(x+1)
 com!(r::XIntV, x::XInt=r) =
     if is_short(x)

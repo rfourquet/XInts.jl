@@ -424,8 +424,7 @@ BigFloat(x::XInt, r::MPFR.MPFRRoundingMode=MPFR.ROUNDING_MODE[];
 float(::Type{XInt}) = BigFloat
 
 # Binary ops
-for (fJ, fC) in ((:*, :mul),
-                 (:mod, :fdiv_r), (:rem, :tdiv_r),
+for (fJ, fC) in ((:mod, :fdiv_r), (:rem, :tdiv_r),
                  (:gcd, :gcd), (:lcm, :lcm),
                  (:xor, :xor))
     fC! = Symbol(fC, :!)
@@ -452,6 +451,8 @@ end
 @inline +(x::Integer, y::XInt) = add!(_XInt(x, 1), y)
 @inline -(x::XInt, y::Integer) = neg!(sub!(_XInt(y, 1), x))
 @inline -(x::Integer, y::XInt) = sub!(_XInt(x, 1), y)
+
+@inline *(x::XInt, y::XInt) = mul!(nothing, x, y)
 
 @inline (&)(x::XInt, y::XInt) = and!(nothing, x, y)
 @inline (|)(x::XInt, y::XInt) = ior!(nothing, x, y)

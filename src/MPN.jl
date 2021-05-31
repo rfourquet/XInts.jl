@@ -64,6 +64,14 @@ and_n(rp, s1, s2, n=len(s1)) = @preserve rp s1 s2 ccall((:__gmpn_and_n, :libgmp)
                                                         (PLimb, PLimb, PLimb, Size),
                                                         ptr(rp), ptr(s1), ptr(s2), n)
 
+mul_1(rp, s1, s2limb) = @preserve rp s1 ccall((:__gmpn_mul_1, :libgmp), Limb,
+                                              (PLimb, PLimb, Size, Limb),
+                                              ptr(rp), ptr(s1), len(s1), s2limb)
+
+mul(rp, s1, s2) = @preserve rp s1 s2 ccall((:__gmpn_mul, :libgmp), Limb,
+                                           (PLimb, PLimb, Size, PLimb, Size),
+                                           ptr(rp), ptr(s1), len(s1), ptr(s2), len(s2))
+
 
 @inline function add_1(rv::Vector, x, y::Limb)
     xl, xv = lenvec(x)
