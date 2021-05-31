@@ -452,7 +452,10 @@ end
 @inline -(x::XInt, y::Integer) = neg!(sub!(_XInt(y, 1), x))
 @inline -(x::Integer, y::XInt) = sub!(_XInt(x, 1), y)
 
-@inline *(x::XInt, y::XInt) = mul!(nothing, x, y)
+@inline *(x::XInt, y::XInt)     = mul!(nothing, x, y)
+@inline *(x::XInt, c::ShortMax) = mul!(nothing, x, c)
+@inline *(x::XInt, y::Integer)  = mul!(nothing, x, XInt(y))
+@inline *(x::Integer, y::XInt)  = y * x
 
 @inline (&)(x::XInt, y::XInt) = and!(nothing, x, y)
 @inline (|)(x::XInt, y::XInt) = ior!(nothing, x, y)
@@ -513,17 +516,6 @@ divrem(x::XInt, y::XInt) =
 invmod(x::XInt, y::XInt) =
     is_short(x, y) ? XInt(invmod(widen(x.x), widen(y.x))) :
                      @bigint () x y XInt(invmod(x, y))
-
-# Basic arithmetic without promotion
-*(x::XInt, c::CulongMax) = is_short(x) ? XInt(widen(x.x) * c) :
-                                         @bigint z x XInt(MPZ.mul_ui!(z, x, c))
-
-*(c::CulongMax, x::XInt) = x * c
-
-*(x::XInt, c::ClongMax) = is_short(x) ? XInt(widen(x.x) * c) :
-                                        @bigint z x XInt(MPZ.mul_si!(z, x, c))
-
-*(c::ClongMax, x::XInt) = x * c
 
 /(x::XInt, y::Union{ClongMax,CulongMax}) = float(x)/y
 /(x::Union{ClongMax,CulongMax}, y::XInt) = x/float(y)

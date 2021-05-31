@@ -324,27 +324,35 @@ sub!(r::XIntV, x::XInt, y::BitInteger) = neg!(add!(r, neg!(x), Static(y)))
 
 sub!(x::XInt, y) = sub!(x, x, _promote(y))
 
+is_limb(x::XInt) = is_short(x) # we don't bother for non-short with one limb
+is_limb(x::ShortMax) = true
+limb(x::XInt) = short(x)
+limb(x::SLimbMax) = x % SLimb
+limb(x::ULimbMax) = x % Limb
+_widen(x::ShortMax) = SLimbW(x)
+_sign(x::Limb) = SLimb(1)
+_sign(x::SLimb) = sign(x)
 
-@inline function mul!(r::XIntV, x::XInt, y::XInt)
+@inline function mul!(r::XIntV, x::XInt, y::Union{ShortMax,XInt})
     xshort = is_short(x)
-    yshort = is_short(y)
+    yshort = is_limb(y)
     if xshort & yshort
         XInt!(r, _widen(x) * _widen(y))
     elseif xshort
         mul1!(r, y, short(x))
     elseif yshort
-        mul1!(r, x, short(y))
+        mul1!(r, x, limb(y))
     else
         mulbig!(r, x, y)
     end
 end
 
-function mul1!(r::XIntV, x::XInt, y::SLimb)
+function mul1!(r::XIntV, x::XInt, y::Short)
     # @assert !is_short(x) # y can be slimbmin
     iszero(y) && return XInt(0)
     isone(y) && return x
     y == -1 && return neg!(x)
-    sz = flipsign(_sign(x), sign(y))
+    sz = flipsign(_sign(x), _sign(y))
     xl = len(x)
     rv = vec!(r, xl + 1)
     high = MPN.mul_1(rv, x, abs(y) % Limb)
@@ -353,6 +361,7 @@ function mul1!(r::XIntV, x::XInt, y::SLimb)
 end
 
 function mulbig!(r::XIntV, x::XInt, y::XInt)
+    # @assert !is_short(x) && !is_short(y)
     xl, yl = len(x), len(y)
     if xl < yl
         x, y = y, x
