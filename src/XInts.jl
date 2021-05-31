@@ -224,7 +224,7 @@ function _XInt(z::Integer, extra::SLimb=0)::XInt
     nd = ndigits(z, base=2)
     xl = _divLimb(nd)
     xl += !iszero(_modLimb(nd))
-    limbs = _vec(xl)
+    limbs = _vec(xl+extra)
     zz = abs(z)
     for i=1:xl
         @inbounds limbs[i] = zz % Limb
