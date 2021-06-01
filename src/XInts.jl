@@ -496,7 +496,10 @@ end
 @inline (&)(x::XInt, y::Integer)    = and!(XInt(y), x)
 @inline (&)(x::Integer, y::XInt)    = y & x
 
-@inline (|)(x::XInt, y::XInt) = ior!(nothing, x, y)
+@inline (|)(x::XInt, y::XInt)       = ior!(nothing, x, y)
+@inline (|)(x::XInt, y::BitInteger) = ior!(nothing, x, y)
+@inline (|)(x::XInt, y::Integer)    = ior!(XInt(y), x)
+@inline (|)(x::Integer, y::XInt)    = y | x
 
 
 # it doesn't seem worthwhile to define 4+ args specific + methods,

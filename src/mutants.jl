@@ -595,12 +595,10 @@ end
     if xshort & yshort
         XInt!(r, limb(x) & limb(y)) # if y is unsigned, result of & is also unsigned and
                                     # XInt! does the right thing
-    elseif iszero(x) || iszero(y)
-        XInt(0)
     elseif xshort
-        and_small!(r, y, limb(x))
+        iszero(x) ? _XInt(0) : and_small!(r, y, limb(x))
     elseif yshort
-        and_small!(r, x, limb(y))
+        iszero(y) ? _XInt(0) : and_small!(r, x, limb(y))
     else
         and_big!(r, x, y)
     end
@@ -823,39 +821,51 @@ end
 
 ## ior (|)
 
-@inline ior!(x::XInt, y::XInt) = ior!(x, x, y)
+@inline ior!(r::XIntV, x, y) = ior!(r, _promote(x), _promote(y))
+@inline ior!(x::XInt, y::Union{ShortMax,XSigned}) = ior!(x, x, y)
 
-@inline function ior!(r::XIntV, x::XInt, y::XInt)
-    xshort = is_short(x)
-    yshort = is_short(y)
+@inline function ior!(r::XIntV, x::Union{ShortMax,XSigned}, y::Union{ShortMax,XSigned})
+    xshort = is_limb(x)
+    yshort = is_limb(y)
     if xshort & yshort
-        XInt!(r, x.x | y.x)
+        x1 = limb(x)
+        y1 = limb(y)
+        r1 = x1 | y1
+        if x1 >= 0 && y1 >= 0 # result is >= 0
+            XInt!(r, unsigned(r1))
+        else # result is < 0
+            XInt!(r, signed(r1))
+        end
     elseif xshort
-        iszero(x) ? y : ior_small!(r, y, x)
+        iszero(x) ? XInt(y) : ior_small!(r, y, limb(x))
     elseif yshort
-        iszero(y) ? x : ior_small!(r, x, y)
+        iszero(y) ? XInt(x) : ior_small!(r, x, limb(y))
     else
         ior_big!(r, x, y)
     end
 end
 
-@noinline function ior_small!(r::XIntV, x::XInt, y::XInt)
+@noinline function ior_small!(r::XIntV, x::XSigned, y::Short)
     # @assert !iszero(x) && !iszero(y) && !is_short(x) && is_short(y)
     # y is small
     xl, xv = lenvec(x)
-    yy = y.x % Limb
+    yy = y % Limb
     x1 = @inbounds xv[1]
     if ispos(x)
-        if ispos(y)
+        if y > 0
             res = _copy!(r, x)
             rv = vec(res)
             @inbounds rv[1] = x1 | yy
             res
         else # x > 0, y < 0
-            # y is short, so more than its sign bit is set, and x | y >= y (result is short)
-            _XInt(x1 | yy)
+            # when fits(y), y is short, so more than its sign bit is set,
+            # and x | y >= y (result is short); but when y doesn't come
+            # from a XInt, y==slimbmin is possible, so result is not
+            # guarranteed to be short
+            # _XInt(x1 | yy) # when fits(y)
+            XInt!(r, (x1 % SLimb) | y)
         end
-    elseif ispos(y) # x < 0
+    elseif y > 0 # x < 0
         # x | y = ~(-x - 1) | y = ~((-x - 1) & ~y) = -((-x - 1) & ~y) - 1
         carry = iszero(x1)
         r1 = (x1-1) & ~yy + 1
@@ -877,12 +887,18 @@ end
         end
     else # x < 0, y < 0
         # x | y = ~(-x-1) | y # similar to x > 0, y < 0
-        _XInt(~(x1-1) | yy)
+        # _XInt(~(x1-1) | yy)
+        XInt!(r, (~(x1-1) % SLimb) | y)
+        XInt!(r, (~(x1-1) | yy) % SLimb)
     end
 end
 
-@noinline function ior_big!(r::XIntV, x::XInt, y::XInt)
+@noinline function ior_big!(r::XIntV, x::XSigned, y::XSigned)
     # @assert !iszero(x) && !iszero(y) && !is_short(x) && !is_short(y)
+    # we keep here (and in and_big!) some type instabilities if
+    # typeof(x) != typeof(y), but the overhead is not that bad, and might
+    # not be concerning enough to warrant type-stabilizing this function
+    # (like we did for addbig!)
     if ispos(x)
         if ispos(y) # r > 0
             xl, xv = lenvec(x)
