@@ -24,18 +24,25 @@ vec!(::Nothing, n::Integer) = _vec(n)
 
 # copy x into r, allocating for r when r===nothing
 # assumes !is_short(x)
-_copy!(r::XIntV, x::XInt) =
+_copy!(r::XIntV, x::XSigned) =
     if r === x
         x
     else
-        xl = len(x)
-        _XInt(x.x, _copy!(vec!(r, xl), x, 1, xl))
+        xl, xv = lenvec(x)
+        _XInt(flipsign(xl, _sign(x)), _copy!(vec!(r, xl), xv, 1:xl))
     end
 
-function _copy!(r::Vector, x::XInt, idx, n=len(x)-idx+1)
-    xv = vec(x)
+function _copy!(r::Vector, xv::Vector, span::UnitRange)
+    a, b = first(span), last(span)
     if r !== xv
-        unsafe_copyto!(r, idx, xv, idx, n)
+        unsafe_copyto!(r, a, xv, a, b-a+1)
+    end
+    r
+end
+
+function _copy!(r::Vector, xv::SVec, span::UnitRange)
+    for i=span
+        @inbounds r[i] = xv[i]
     end
     r
 end
@@ -324,9 +331,9 @@ sub!(r::XIntV, x::XInt, y::BitInteger) = neg!(add!(r, neg!(x), Static(y)))
 
 sub!(x::XInt, y) = sub!(x, x, _promote(y))
 
-is_limb(x::XInt) = is_short(x) # we don't bother for non-short with one limb
+is_limb(x::XSigned) = is_short(x) # we don't bother for non-short with one limb
 is_limb(x::ShortMax) = true
-limb(x::XInt) = short(x)
+limb(x::XSigned) = short(x)
 limb(x::SLimbMax) = x % SLimb
 limb(x::ULimbMax) = x % Limb
 _widen(x::ShortMax) = SLimbW(x)
@@ -578,32 +585,48 @@ end
     end
 end
 
-@inline and!(x::XInt, y::XInt) = and!(x, x, y)
+@inline and!(r::XIntV, x, y) = and!(r, _promote(x), _promote(y))
 
-@inline function and!(r::XIntV, x::XInt, y::XInt)
-    if is_short(x, y)
-        XInt!(r, x.x & y.x)
+@inline and!(x::XInt, y::Union{ShortMax,XSigned}) = and!(x, x, y)
+
+@inline function and!(r::XIntV, x::Union{ShortMax,XSigned}, y::Union{ShortMax,XSigned})
+    xshort = is_limb(x)
+    yshort = is_limb(y)
+    if xshort & yshort
+        XInt!(r, limb(x) & limb(y)) # if y is unsigned, result of & is also unsigned and
+                                    # XInt! does the right thing
     elseif iszero(x) || iszero(y)
         XInt(0)
-    elseif is_short(x)
-        and_small!(r, y, x)
-    elseif is_short(y)
-        and_small!(r, x, y)
+    elseif xshort
+        and_small!(r, y, limb(x))
+    elseif yshort
+        and_small!(r, x, limb(y))
     else
         and_big!(r, x, y)
     end
 end
 
-@noinline function and_small!(r::XIntV, x::XInt, y::XInt)
-    # @assert !iszero(x) && !iszero(y) && !is_short(x) && is_short(y)
-    # y is small
-    xl, xv = lenvec(x)
-    yy = y.x % Limb
+function and_small!(r::XIntV, x::XInt, y::Limb)
+    xv = vec(x)
     x1 = @inbounds xv[1]
     if ispos(x)
-        if ispos(y)
-            u = x1 & yy
-            XInt!(r, u)
+        XInt!(r, x1 & y)
+    else
+        # x & y = ~(-x - 1) & y
+        XInt!(r, ~(x1-1) & y)
+    end
+end
+
+@noinline function and_small!(r::XIntV, x::XSigned, y::SLimb)
+    # @assert !iszero(x) && !iszero(y) && !is_short(x) && is_short(y)
+    # y is short, but can also be typemin(SLimb)
+    xl, xv = lenvec(x)
+    yy = y % Limb
+    x1 = @inbounds xv[1]
+    if ispos(x)
+        if y > 0
+            # x & y <= min(x, y) == y, so the result is short
+            _XInt(x1 & yy)
         else # x > 0, y < 0
             u = x1 & yy
             res = _copy!(r, x)
@@ -612,19 +635,18 @@ end
             # @assert_reduced x # if x is not reduced, the result could be immediate
             res
         end
-    elseif ispos(y) # x < 0
-        # x & y = ~(-x - 1) & y
+    elseif y > 0 # x < 0
+        # x & y = ~(-x - 1) & y; result >= 0, and <= y, so is immediate
         _XInt((~(x1-1) & yy) % SLimb)
     else # x < 0, y < 0
         # let u = -x: -u & y = ~(u-1) & y = ~(u-1 | ~y) = -(u-1 | ~y) - 1
-        # y is sign-extended to all the upper-limbs, and upper-bit of its first limb is 1
-        # if x is one limb, the upper-bit of its first limb is also 1, so in any
-        # case, the result can't be an immediate integer
+        # the result is < 0, and it's easy to see that it's also <= min(x, y), so
+        # it can't be an immediate integer (provided x isn't)
 
         if iszero(x1)
             # if x1 == 0, we see that a 2-complement representation of x would also
             # have a null first limb, so x & y == x
-            x
+            XInt(x)
         else
             # x1 > 0, so x-1 differs from x only in the 1st limb
             r1 = (x1-1) | ~y
@@ -647,15 +669,15 @@ end
                 _XInt(-rl, rv)
             else
                 rv = vec!(r, xl)
-                _copy!(rv, x, 2)
+                _copy!(rv, xv, 2:xl)
                 @inbounds rv[1] = r1+1
-                _XInt(x.x, rv)
+                _XInt(flipsign(xl, _sign(x)), rv)
             end
         end
     end
 end
 
-@noinline function and_big!(r::XIntV, x::XInt, y::XInt)
+@noinline function and_big!(r::XIntV, x::XSigned, y::XSigned)
     # @assert !iszero(x) && !iszero(y) && !is_short(x) && !is_short(y)
     if ispos(x)
         if ispos(y)

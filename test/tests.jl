@@ -529,9 +529,10 @@ end
     end
 
     @testset "$op(::XInt, ::$T) / $op(::$T, ::XInt)" for
-        op in (+, -, *, /, cmp, <, <=, >, >=, ==, !=, flipsign, gcd, gcdx, binomial),
+        op in (+, -, *, /, cmp, <, <=, >, >=, ==, !=, flipsign, gcd, gcdx, binomial,
+               &),
         T in [Base.BitInteger_types...; BigInt; Int256; UInt256;
-              if op ∈ (gcd, gcdx, binomial)
+              if op ∈ (gcd, gcdx, binomial, &)
                   []
               else
                   [Base.uniontypes(CdoubleMax); BigFloat]

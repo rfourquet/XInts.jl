@@ -476,24 +476,26 @@ end
 
 # we put @inline, as it seems these methods don't by themselves,
 # maybe because add! is already inline and too big
-@inline +(x::XInt,       y::XInt)       = add!(nothing, x, y)
-@inline +(x::XInt,       y::BitInteger) = add!(nothing, x, y)
-@inline +(x::BitInteger, y::XInt)       = add!(nothing, x, y)
-@inline -(x::XInt,       y::XInt)       = sub!(nothing, x, y)
-@inline -(x::XInt,       y::BitInteger) = sub!(nothing, x, y)
-@inline -(x::BitInteger, y::XInt)       = sub!(nothing, x, y)
+@inline +(x::XInt, y::XInt)       = add!(nothing, x, y)
+@inline +(x::XInt, y::BitInteger) = add!(nothing, x, y)
+@inline +(x::XInt, y::Integer)    = add!(_XInt(y, 1), x)
+@inline +(x::Integer, y::XInt)    = y + x
 
-@inline +(x::XInt, y::Integer) = add!(_XInt(y, 1), x)
-@inline +(x::Integer, y::XInt) = add!(_XInt(x, 1), y)
-@inline -(x::XInt, y::Integer) = neg!(sub!(_XInt(y, 1), x))
-@inline -(x::Integer, y::XInt) = sub!(_XInt(x, 1), y)
+@inline -(x::XInt, y::XInt)       = sub!(nothing, x, y)
+@inline -(x::BitInteger, y::XInt) = sub!(nothing, x, y)
+@inline -(x::Integer, y::XInt)    = sub!(_XInt(x, 1), y)
+@inline -(x::XInt, y::Integer)    = neg!(y-x)
 
 @inline *(x::XInt, y::XInt)     = mul!(nothing, x, y)
 @inline *(x::XInt, c::ShortMax) = mul!(nothing, x, c)
 @inline *(x::XInt, y::Integer)  = mul!(_XInt(y, safe_len(x)), x)
 @inline *(x::Integer, y::XInt)  = y * x
 
-@inline (&)(x::XInt, y::XInt) = and!(nothing, x, y)
+@inline (&)(x::XInt, y::XInt)       = and!(nothing, x, y)
+@inline (&)(x::XInt, y::BitInteger) = and!(nothing, x, y)
+@inline (&)(x::XInt, y::Integer)    = and!(XInt(y), x)
+@inline (&)(x::Integer, y::XInt)    = y & x
+
 @inline (|)(x::XInt, y::XInt) = ior!(nothing, x, y)
 
 
