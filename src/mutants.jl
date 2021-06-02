@@ -883,7 +883,7 @@ end
                 carry &= iszero(xi)
             end
             rl = xl - iszero(@inbounds rv[xl])
-            _XInt(-rl, rv)
+            _XInt(-rl, rv, true) # TODO: avoid reduce here
         end
     else # x < 0, y < 0
         # x | y = ~(-x-1) | y # similar to x > 0, y < 0
@@ -1053,6 +1053,344 @@ end
                 cp &= iszero(u)
             end
             _XInt(-rl, rv)
+        end
+    end
+end
+
+
+@inline xor!(r::XIntV, x, y) = xor!(r, _promote(x), _promote(y))
+@inline xor!(x::XInt, y::Union{ShortMax,XSigned}) = xor!(x, x, y)
+
+@inline function xor!(r::XIntV, x::Union{ShortMax,XSigned}, y::Union{ShortMax,XSigned})
+    xshort = is_limb(x)
+    yshort = is_limb(y)
+    if xshort & yshort
+        x1 = limb(x)
+        y1 = limb(y)
+        XInt!(r, _widen(x1) ⊻ _widen(y1))
+    elseif xshort
+        iszero(x) ? XInt(y) : xor_small!(r, y, limb(x))
+    elseif yshort
+        iszero(y) ? XInt(x) : xor_small!(r, x, limb(y))
+    else
+        xor_big!(r, x, y)
+    end
+end
+
+@noinline function xor_small!(r::XIntV, x::XSigned, y::Limb)
+    xl, xv = lenvec(x)
+    x1 = @inbounds xv[1]
+    if ispos(x)
+        if xl == 1
+            XInt!(r, x1 ⊻ y)
+        else
+            res = _copy!(r, x)
+            rv = vec(res)
+            @inbounds rv[1] = x1 ⊻ y
+            res
+        end
+    else
+        # x ⊻ y = ~(~x ⊻ y) = ~((-x-1) ⊻ y) = -((-x-1) ⊻ y) - 1
+        cm = iszero(x1)
+        r1 = (x1-1) ⊻ y + 1
+        cp = iszero(r1) # if cm, then !cp (as y != 0)
+        if !cp && xl == 1
+            # xl == 1 ==> !cm
+            XInt_neg!(r, r1)
+        elseif xl == 2
+            x2 = @inbounds xv[2]
+            r2 = x2 - cm + cp
+            if iszero(r2)
+                if cp
+                    _XInt(SLimb(-3), assign!(r, r1, r2, one(Limb)))
+                else
+                    XInt_neg!(r, r1)
+                end
+            else
+                _XInt(SLimb(-2), assign!(r, r1, r2))
+            end
+        else
+            rv = vec!(r, xl+1)
+            @inbounds rv[1] = r1
+            @inbounds for i=2:xl
+                xi = xv[i]
+                rv[i] = xi - cm + cp
+                cm &= iszero(xi)
+                cp &= xi == typemax(Limb)
+            end
+            @inbounds rv[xl+1] = cp
+            _XInt(-(xl + !iszero(cp)), rv)
+        end
+    end
+end
+
+@noinline function xor_small!(r::XIntV, x::XSigned, y::SLimb)
+    # @assert !iszero(x) && !iszero(y) && !is_short(x) && is_short(y)
+    xl, xv = lenvec(x)
+    yy = y % Limb
+    x1 = @inbounds xv[1]
+    if ispos(x)
+        if y > 0
+            res = _copy!(r, x)
+            rv = vec(res)
+            @inbounds rv[1] = x1 ⊻ yy
+            res
+        else # x > 0, y < 0
+            # x ⊻ y = ~(x ⊻ ~y) = -(x ⊻ ~y) - 1
+            # if x is one limb, then the high bit of its limb is set,
+            # but the high bit of ~y is not, so the result can't be immediate
+            rv = vec!(r, xl+1) # ?TODO: avoid +1 in the majority of cases where its not needed?
+            @inbounds rv[1] = r1 = x1 ⊻ ~yy + 1
+            c = iszero(r1)
+            for i=2:xl
+                xi = @inbounds xv[i]
+                @inbounds rv[i] = xi + c
+                c &= xi == typemax(Limb)
+            end
+            @inbounds rv[xl+1] = c
+            _XInt(-(xl + !iszero(c)), rv)
+        end
+    elseif y > 0 # x < 0
+        # x ⊻ y = ~(~x ⊻ y) = ~((-x-1) ⊻ y) = -((-x-1) ⊻ y) - 1
+        cm = iszero(x1)
+        r1 = (x1-1) ⊻ yy + 1
+        cp = iszero(r1) # if cm, then !cp
+        if !cp && xl == 1
+            # xl == 1 ==> !cm
+            XInt_neg!(r, r1)
+        else
+            rv = vec!(r, xl+1)
+            @inbounds rv[1] = r1
+            @inbounds for i=2:xl
+                xi = xv[i]
+                rv[i] = xi - cm + cp
+                cm &= iszero(xi)
+                cp &= xi == typemax(Limb)
+            end
+            @inbounds rv[xl+1] = cp
+            rl =
+                if cp
+                    xl + 1
+                elseif iszero(@inbounds rv[xl])
+                    # can happen because of cm, but then !iszero(rv[xl-2])
+                    xl - 1
+                else
+                    xl
+                end
+            _XInt(-rl, rv)
+        end
+    else # x < 0, y < 0 (result >= 0)
+        # x ⊻ y = ~x ⊻ ~y = (-x - 1) ⊻ ~y
+        r1 = (x1-one(Limb)) ⊻ ~yy
+        if xl == 1
+            # res is immediate if x1 == limb1min
+            XInt!(r, r1)
+        else
+            rv = vec!(r, xl)
+            @inbounds rv[1] = r1
+            c = iszero(x1)
+            local ri
+            for i=2:xl
+                xi = @inbounds xv[i]
+                @inbounds ri = rv[i] = xi-c
+                c &= iszero(xi)
+            end
+            _XInt(xl - iszero(ri), rv)
+        end
+    end
+end
+
+@noinline function xor_big!(r::XIntV, x::XSigned, y::XSigned)
+    # @assert !iszero(x) && !iszero(y) && !is_short(x) && !is_short(y)
+    xl, xv = lenvec(x)
+    yl, yv = lenvec(y)
+    if ispos(x)
+        if ispos(y)
+            if xl < yl
+                xl, yl = yl, xl
+                xv, yv = yv, xv
+            end
+            if xl == yl
+                local i = xl
+                local rvl
+                while i > 0
+                    xi = @inbounds xv[i]
+                    yi = @inbounds yv[i]
+                    rvl = xi ⊻ yi
+                    iszero(rvl) || break
+                    i -= 1
+                end
+                if i == 0
+                    XInt(0)
+                elseif i == 1
+                    XInt!(r, rvl)
+                else
+                    rv = vec!(r, i)
+                    rl = i
+                    @inbounds rv[rl] = rvl
+                    i -= 1
+                    while i > 0
+                        xi = @inbounds xv[i]
+                        yi = @inbounds yv[i]
+                        @inbounds rv[i] = xi ⊻ yi
+                        i -= 1
+                    end
+                    _XInt(rl, rv)
+                end
+            else
+                rv = vec!(r, xl)
+                for i=1:yl
+                    @inbounds rv[i] = xv[i] ⊻ yv[i]
+                end
+                for i=yl+1:xl
+                    @inbounds rv[i] = xv[i]
+                end
+                _XInt(xl, rv)
+            end
+        else # x > 0, y < 0
+            xl, yl = yl, xl
+            xv, yv = yv, xv
+            @goto mixed
+        end
+    elseif ispos(y) # x < 0
+        @label mixed
+        # x ⊻ y = ~(~x ⊻ y) = ~((-x-1) ⊻ y) = -((-x-1) ⊻ y) - 1
+        if yl > xl
+            rv = vec!(r, yl + 1)
+            cp = cm = true
+            @inbounds for i=1:xl
+                xi = xv[i]
+                yi = yv[i]
+                ri = rv[i] = (xi-cm) ⊻ yi + cp
+                cm &= iszero(xi)
+                cp &= iszero(ri)
+            end
+            @inbounds for i=xl+1:yl
+                ri = rv[i] = yv[i] + cp
+                cp &= iszero(ri)
+            end
+            @inbounds rv[yl+1] = cp
+            _XInt(-(yl + !iszero(cp)), rv)
+        elseif yl + 2 <= xl
+            rv = vec!(r, xl + 1)
+            cp = cm = true
+            @inbounds for i=1:yl
+                xi = xv[i]
+                yi = yv[i]
+                ri = rv[i] = (xi-cm) ⊻ yi + cp
+                cm &= iszero(xi)
+                cp &= iszero(ri)
+            end
+            @inbounds for i=yl+1:xl
+                xi = xv[i]
+                rv[i] = xi-cm+cp
+                cm &= iszero(xi)
+                cp &= iszero(ri)
+            end
+            @inbounds rv[xl+1] = cp
+            _XInt(-(xl + !iszero(cp)), rv)
+        else # xl == yl || xl == yl+1
+            x1 = @inbounds xv[1]
+            y1 = @inbounds yv[1]
+            r1 = (x1-1) ⊻ y1 + 1
+            cm = iszero(x1)
+            cp = iszero(r1)
+            # when fits(r1), all upper limbs could be 0 and result could be immediate,
+            # so we scan from the low end to check that out
+            i = 2
+            local ri
+            @inbounds while i <= yl
+                xi = xv[i]
+                yi = yv[i]
+                ri = (xi-cm) ⊻ yi + cp
+                cm &= iszero(xi)
+                cp &= iszero(ri)
+                iszero(ri) || break
+                i += 1
+            end
+            if i > yl && xl > yl
+                ri = @inbounds xv[xl] - cm + cp
+                cp &= iszero(ri)
+                if iszero(ri)
+                    i += 1
+                else
+                    cp = false
+                end
+            end
+            if !cp && i > xl
+                XInt_neg!(r, r1)
+            else
+                rv = vec!(r, xl + (i > xl))
+                @inbounds rv[1] = r1
+                fill!(@view(rv[2:i-1]), zero(Limb))
+                if i <= xl # then !cp
+                    @inbounds rv[i] = ri
+                    rl = i
+                    i += 1
+                    @inbounds while i <= yl
+                        xi = xv[i]
+                        yi = yv[i]
+                        ri = rv[i] = (xi-cm) ⊻ yi
+                        cm &= iszero(xi)
+                        if !iszero(ri)
+                            rl = i
+                        end
+                        i += 1
+                    end
+                    if xl > yl && i <= xl
+                        @inbounds ri = rv[i] = xv[i]-cm
+                        if !iszero(ri)
+                            rl = i
+                        end
+                    end
+                    _XInt(-rl, rv)
+                else
+                    @inbounds rv[xl+1] = cp
+                    _XInt(-SLimb(xl+1), rv)
+                end
+            end
+        end
+    else # x < 0, y < 0 (result >= 0)
+        # x ⊻ y = ~x ⊻ ~y = (-x - 1) ⊻ (-y - 1)
+        if xl < yl
+            xl, yl = yl, xl
+            xv, yv = yv, xv
+        end
+        @inbounds x1 = xv[1]
+        @inbounds y1 = yv[1]
+        r1 = (x1-1) ⊻ (y1-1)
+        cx = iszero(x1)
+        cy = iszero(y1)
+        i = 2
+        local ri
+        while i <= xl
+            @inbounds xi = xv[i]
+            @inbounds yi = i <= yl ? yv[i] : zero(Limb)
+            ri = (xi-cx) ⊻ (yi-cy)
+            cx &= iszero(xi)
+            cy &= iszero(yi)
+            iszero(ri) || break
+            i += 1
+        end
+        if i > xl
+            XInt!(r, r1)
+        else
+            rv = vec!(r, xl)
+            @inbounds rv[1] = r1
+            fill!(@view(rv[2:i-1]), zero(Limb))
+            @inbounds rv[i] = ri
+            rl = i
+            @inbounds for i=i+1:xl
+                xi = xv[i]
+                yi = i <= yl ? yv[i] : zero(Limb)
+                ri = rv[i] = (xi-cx) ⊻ (yi-cy)
+                cx &= iszero(xi)
+                cy &= iszero(yi)
+                if !iszero(ri)
+                    rl = i
+                end
+            end
+            _XInt(rl, rv)
         end
     end
 end

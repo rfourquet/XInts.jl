@@ -461,8 +461,7 @@ float(::Type{XInt}) = BigFloat
 
 # Binary ops
 for (fJ, fC) in ((:mod, :fdiv_r), (:rem, :tdiv_r),
-                 (:gcd, :gcd), (:lcm, :lcm),
-                 (:xor, :xor))
+                 (:gcd, :gcd), (:lcm, :lcm))
     fC! = Symbol(fC, :!)
     @eval begin
         ($fJ)(x::XInt, y::XInt) =
@@ -500,6 +499,11 @@ end
 @inline (|)(x::XInt, y::BitInteger) = ior!(nothing, x, y)
 @inline (|)(x::XInt, y::Integer)    = ior!(XInt(y), x)
 @inline (|)(x::Integer, y::XInt)    = y | x
+
+@inline xor(x::XInt, y::XInt)       = xor!(nothing, x, y)
+@inline xor(x::XInt, y::BitInteger) = xor!(nothing, x, y)
+@inline xor(x::XInt, y::Integer)    = xor!(XInt(y), x)
+@inline xor(x::Integer, y::XInt)    = y ⊻ x
 
 
 # it doesn't seem worthwhile to define 4+ args specific + methods,

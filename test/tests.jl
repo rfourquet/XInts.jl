@@ -1,6 +1,6 @@
 using XInts
 using XInts: SLimb, slimbmin, slimbmax, Limb, ClongMax, CulongMax, CdoubleMax, BITS_PER_LIMB,
-             add!, sub!, mul!, com!, lshift!, rshift!, and!, ior!, SLimbW, LimbW, vec, is_short
+             add!, sub!, mul!, com!, xor!, lshift!, rshift!, and!, ior!, SLimbW, LimbW, vec, is_short
 using BitIntegers
 using Random
 
@@ -376,6 +376,7 @@ opmap(::typeof(lshift!)) = <<
 opmap(::typeof(rshift!)) = >>
 opmap(::typeof(and!)) = &
 opmap(::typeof(ior!)) = |
+opmap(::typeof(xor!)) = xor
 
 function testop2(op, x, y)
     for a = (-x, x), b = (-y, y)
@@ -480,11 +481,24 @@ end
         v = XInt(y4) << 3BITS_PER_LIMB | XInt(v3) << 2BITS_PER_LIMB | XInt(v2) << BITS_PER_LIMB | y1
         push!(xs, x, y, u, v, w)
     end
+    let # xor!
+        # x < 0 with 3 limbs, y > 0 with 2 limbs, result with null 3rd limb
+        # formula: x ⊻ y = -((-x-1) ⊻ y + 1), so find such result via
+        # propagating the carry of +1 till 3rd limb
+        x1 = rand(1:typemax(Limb))
+        y1 = ~(x1-1)
+        y2 = rand(1:typemax(Limb)) # y2 must not be null
+        x2 = ~y2
+        x3 = typemax(Limb)
+        x = XInt(x3) << 2BITS_PER_LIMB | XInt(x2) << BITS_PER_LIMB | XInt(x1)
+        y = XInt(y2) << BITS_PER_LIMB | XInt(y1)
+        push!(xs, x, y)
+    end
 
     @testset "$op(::XInt, ::XInt)" for op = (+, -, *, mod, rem, gcd, gcdx, lcm, &, |, xor,
                                              /, div, divrem, fld, cld, invmod,
                                              cmp, <, <=, >, >=, ==, flipsign, binomial,
-                                             add!, sub!, mul!, and!, ior!)
+                                             add!, sub!, mul!, and!, ior!, xor!)
         for x=xs, y=xs
             iszero(y) && op ∈ (/, mod, rem, div, divrem, fld, cld, invmod) &&
                 continue
@@ -515,6 +529,14 @@ end
         S = T === BigInt ? Int128 : T
         as = T[0, 1, 2, 3, rand(S, 2n)..., typemax(S), typemax(S)-1, typemax(S)-2]
         xs = BigInt.(filter(isinteger, as))
+        if T == Limb # xor!
+            x1 = rand(1:typemax(T))
+            y = ~(x1-1)
+            x = BigInt(typemax(T)) << BITS_PER_LIMB | x1
+            push!(as, y)
+            push!(xs, x)
+        end
+        push!(xs, BigInt(2)^BITS_PER_LIMB) # also for xor!
         if T <: Signed
             append!(as, (-).(as))
             push!(as, typemin(S))
@@ -530,9 +552,9 @@ end
 
     @testset "$op(::XInt, ::$T) / $op(::$T, ::XInt)" for
         op in (+, -, *, /, cmp, <, <=, >, >=, ==, !=, flipsign, gcd, gcdx, binomial,
-               &, |),
+               &, |, xor),
         T in [Base.BitInteger_types...; BigInt; Int256; UInt256;
-              if op ∈ (gcd, gcdx, binomial, &, |)
+              if op ∈ (gcd, gcdx, binomial, &, |, xor)
                   []
               else
                   [Base.uniontypes(CdoubleMax); BigFloat]
