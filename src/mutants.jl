@@ -875,15 +875,23 @@ end
             # then !carry as -x > 0
             XInt_neg!(r, r1)
         else
-            rv = vec!(r, xl)
-            @inbounds rv[1] = r1
-            @inbounds for i=2:xl
-                xi = xv[i]
-                rv[i] = xi - carry
-                carry &= iszero(xi)
+            x2 = @inbounds xv[2]
+            r2 = x2 - carry
+            carry &= iszero(x2)
+            if xl == 2 && iszero(r2)
+                XInt_neg!(r, r1)
+            else
+                rv = vec!(r, xl)
+                @inbounds rv[1] = r1
+                @inbounds rv[2] = r2
+                @inbounds for i=3:xl
+                    xi = xv[i]
+                    rv[i] = xi - carry
+                    carry &= iszero(xi)
+                end
+                rl = xl - iszero(@inbounds rv[xl])
+                _XInt(-rl, rv)
             end
-            rl = xl - iszero(@inbounds rv[xl])
-            _XInt(-rl, rv, true) # TODO: avoid reduce here
         end
     else # x < 0, y < 0
         # x | y = ~(-x-1) | y # similar to x > 0, y < 0
