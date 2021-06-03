@@ -404,15 +404,9 @@ end
 # set r to ~x == -(x+1)
 com!(r::XIntV, x::XInt=r) =
     if is_short(x)
-        if x.x !== slimbmax
-            _XInt(~x.x)
-        else
-            rv = vec!(r, 1)
-            @inbounds rv[1] = limb1min
-            _XInt(-one(SLimb), rv)
-        end
+        XInt!(r, ~x.x) # could be non-short for x.x == slimbmax
     else
-         neg!(add1!(r, x, one(SLimb)))
+        neg!(add1!(r, x, one(SLimb)))
     end
 
 lshift!(x::XInt, c::Integer) = lshift!(x, x, c)
@@ -896,7 +890,6 @@ end
     else # x < 0, y < 0
         # x | y = ~(-x-1) | y # similar to x > 0, y < 0
         # _XInt(~(x1-1) | yy)
-        XInt!(r, (~(x1-1) % SLimb) | y)
         XInt!(r, (~(x1-1) | yy) % SLimb)
     end
 end
