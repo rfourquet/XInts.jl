@@ -566,7 +566,7 @@ invmod(x::XInt, y::XInt) =
 /(x::Union{ClongMax,CulongMax}, y::XInt) = x/float(y)
 
 # unary ops
-(-)(x::XInt) = _XInt(-x.x, _copy(x.v))
+(-)(x::XInt) = neg!(x)
 (~)(x::XInt) = com!(nothing, x)
 
 <<(x::XInt, c::UInt) = lshift!(nothing, x, c)
