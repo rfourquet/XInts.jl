@@ -340,7 +340,19 @@ macro bigint(args...)
     Expr(:gc_preserve, lets, xs...)
 end
 
-BigInt(x::XInt) = is_short(x) ? BigInt(x.x) : @bigint () x MPZ.set(x)
+function BigInt(x::XInt)
+    if is_short(x)
+        BigInt(x.x)
+    else
+        xl, xv = lenvec(x)
+        nbits = xl*8*sizeof(Limb)
+        b = VERSION >= v"1.3" ? BigInt(; nbits=nbits) :
+                                MPZ.realloc2(nbits)
+        @preserve b xv unsafe_copyto!(b.d, pointer(xv), xl)
+        b.size = x.x
+        b
+    end
+end
 
 Base.show(io::IO, x::XInt) = print(io, string(x))
 
