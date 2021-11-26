@@ -657,12 +657,17 @@ end
                     op(XInt(x))
                 catch e
                     if !(e isa Union{InexactError,DomainError,DivideError})
-                        @show typeof(e) op x
                     end
                 end
                 continue
             end
-            r = op(vint(x))
+            local r
+            try
+                r = op(vint(x))
+            catch
+                @show x vint(x) op op(x)
+                continue
+            end
             @test r == s
             if s isa BigInt
                 @test validate(r) isa XInt
