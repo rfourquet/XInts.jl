@@ -356,8 +356,30 @@ end
 
 Base.show(io::IO, x::XInt) = print(io, string(x))
 
-string(n::XInt; base::Integer = 10, pad::Integer = 1) =
-    @bigint () n string(n; base=base, pad=pad)
+function string(n::XInt; base::Integer = 10, pad::Integer = 1)
+    is_short(n) && return string(n.x; base=base, pad=pad)
+    base < 0 && return Base._base(Int(base), n, pad, (base>0) & isneg(n))
+    2 <= base <= 62 || throw(ArgumentError("base must be 2 ≤ base ≤ 62, got $base"))
+    nd1 = ndigits(n, base=base)
+    nd  = max(nd1, pad)
+    sv  = Base.StringVector(nd + isneg(n))
+    xl, xv = lenvec(n)
+    if !ispow2(base)
+        # MPN.get_str might clobber the input
+        xv = copy(xv)
+    end
+    str_size = @preserve sv Int(MPN.get_str(pointer(sv) + nd - nd1 + isneg(n), base, xv, xl))
+    @assert str_size == nd1
+    digits = base <= 36 ? Base.base36digits : Base.base62digits
+    @inbounds for i = (1:nd-nd1) .+ isneg(n)
+        sv[i] = '0' % UInt8
+    end
+    @inbounds for j = nd-nd1+isneg(n)+1:lastindex(sv)
+        sv[j] = digits[1+sv[j]]
+    end
+    isneg(n) && (sv[1] = '-' % UInt8)
+    String(sv)
+end
 
 widen(::Type{XInt}) = XInt
 

@@ -313,9 +313,15 @@ end
     @testset "parse, string, show" begin
         @test validate(parse(XInt, "123")) === XInt(123)
 
-        for x = BigInt[rand(Int8, 10); rand(Int128, 10); rand(-big(2)^200:big(2)^200, 10)]
+        for x = BigInt[-10:10;
+                       rand(Int8, 10);
+                       rand(Int128, 10);
+                       rand(-big(2)^200:big(2)^200, 10)]
             @test string(x) == string(XInt(x))
             @test sprint(show, x) == sprint(show, XInt(x))
+            for base = [-62:-2; 2:62], pad = rand(0:220, 30)
+                @test string(x, base=base, pad=pad) == string(XInt(x), base=base, pad=pad)
+            end
         end
     end
     @testset "float(XInt)" begin

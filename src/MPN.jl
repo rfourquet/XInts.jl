@@ -72,6 +72,10 @@ mul(rp, s1, s2) = @preserve rp s1 s2 ccall((:__gmpn_mul, :libgmp), Limb,
                                            (PLimb, PLimb, Size, PLimb, Size),
                                            ptr(rp), ptr(s1), len(s1), ptr(s2), len(s2))
 
+get_str(str, base, s1, n=len(s1)) = @preserve str s1 ccall((:__gmpn_get_str, :libgmp), Size,
+                                                           (Ptr{Cuchar}, Cint, PLimb, Size),
+                                                           ptr(str), base, ptr(s1), n)
+
 
 @inline function add_1(rv::Vector, x, y::Limb)
     xl, xv = lenvec(x)
