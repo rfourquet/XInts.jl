@@ -76,6 +76,10 @@ get_str(str, base, s1, n=len(s1)) = @preserve str s1 ccall((:__gmpn_get_str, :li
                                                            (Ptr{Cuchar}, Cint, PLimb, Size),
                                                            ptr(str), base, ptr(s1), n)
 
+get_d(s1, n, sign, exp=0) = @preserve s1 ccall((:__gmpn_get_d, :libgmp), Cdouble,
+                                               (PLimb, Size, Size, Clong),
+                                               ptr(s1), n, sign, exp)
+
 
 @inline function add_1(rv::Vector, x, y::Limb)
     xl, xv = lenvec(x)

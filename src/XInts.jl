@@ -461,9 +461,13 @@ function (::Type{T})(x::XInt) where T<:Base.BitSigned
     end
 end
 
-Float64(x::XInt, ::RoundingMode{:ToZero}) =
-    is_short(x) ? Float64(x.x, RoundToZero) : @bigint () x MPZ.get_d(x)
-
+function Float64(x::XInt, ::RoundingMode{:ToZero})
+    if is_short(x)
+        Float64(x.x, RoundToZero)
+    else
+        MPN.get_d(x, len(x), x.x)
+    end
+end
 
 function (::Type{T})(x::XInt, ::RoundingMode{:ToZero}) where T<:Union{Float16,Float32}
     T(Float64(x, RoundToZero), RoundToZero)
